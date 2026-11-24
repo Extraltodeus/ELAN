@@ -71,6 +71,8 @@ class CreditsRoll:
 	NUDGE = 110.0
 	HOLD = 1.4
 	START = 380.0
+	EASE = 90.0
+	CREEP = 0.2
 
 	def __init__(self):
 		self.offset = self.START
@@ -81,8 +83,17 @@ class CreditsRoll:
 		self.offset = self.START
 		self.hold = 0.0
 
+	def _clamp(self, offset):
+		offset = max(offset, 0.0)
+		return min(offset, self.limit) if self.limit > 0.0 else offset
+
+	def _pace(self):
+		if self.limit <= 0.0:
+			return self.SPEED
+		return self.SPEED * min(max((self.limit - self.offset) / self.EASE, self.CREEP), 1.0)
+
 	def _nudge(self, amount):
-		self.offset = max(self.offset + amount, 0.0)
+		self.offset = self._clamp(self.offset + amount)
 		self.hold = self.HOLD
 
 	def update(self, dt, menu, events):
@@ -97,9 +108,8 @@ class CreditsRoll:
 			self._nudge(self.NUDGE)
 		self.hold = max(self.hold - dt, 0.0)
 		if self.hold <= 0.0:
-			self.offset += self.SPEED * dt
-		if self.limit > 0.0 and self.offset > self.limit:
-			self.offset = 0.0
+			self.offset += self._pace() * dt
+		self.offset = self._clamp(self.offset)
 		return None
 
 	def view(self):

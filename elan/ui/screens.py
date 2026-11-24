@@ -844,6 +844,7 @@ class CreditsScreen(BaseScreen):
 		self.shade = Shade([(0.0, 0.72), (0.5, 0.66), (1.0, 0.72)], [(0.0, 0.3), (0.3, 0.0), (0.7, 0.0), (1.0, 0.3)])
 		self.rows = None
 		self.span = 0
+		self.rest = 0
 		self.source = None
 
 	def resize(self):
@@ -880,13 +881,19 @@ class CreditsScreen(BaseScreen):
 		self.source = entries
 		self.rows = []
 		y = 0
-		for entry in entries:
+		bottom = 0
+		last = max(k for k, entry in enumerate(entries) if entry[0] != 'gap')
+		for k, entry in enumerate(entries):
 			if entry[0] == 'gap':
 				y += m.px(self.GAP) * entry[1]
 				continue
 			height, labels, rule = self.row(entry)
+			if k == last:
+				y = max(y, bottom + m.h // 2)
+				self.rest = y + labels[0][0].h // 2
 			self.rows.append((y, height, labels, rule))
 			y += height
+			bottom = y
 		self.span = y
 
 	def draw(self, screen, t, view):
@@ -907,7 +914,7 @@ class CreditsScreen(BaseScreen):
 			if rule:
 				self.hline(screen, m.cx, ys + rule[0], rule[1], theme.ACCENT, alpha * 0.8)
 		self.lab(CREDITS_FOOTER, "tiny", theme.PRIMARY_DIM, spacing=3).draw(screen, m.px(46), m.h - m.px(34), "bottomleft", 200 * fade)
-		return (self.span + m.h) / m.s
+		return (m.h * 0.5 + self.rest) / m.s
 
 
 class Screens:

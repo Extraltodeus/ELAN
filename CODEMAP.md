@@ -11,7 +11,7 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--ba
 - elan/modes.py — modes de jeu (Mode, ChillMode, StoryMode) : pente de consommation, nombre de niveaux, chrono, clés de records, nature du tunnel / monde suivant
 - elan/title.py — menu du titre (TitleMenu) : rangée MODE, rangée PILOT, liens OPTIONS / SCORES / CREDITS (`LINKS`), souris / molette, mode mémorisé
 - elan/scores.py — tableau des scores (ScoreBoard) : top `AppCfg.SCORES_KEPT` par mode dans `elan_scores.json`, repris du record existant au premier lancement
-- elan/credits.py — générique : contenu (`CREDITS`) et défilement (CreditsRoll : auto, molette, retour)
+- elan/credits.py — générique : contenu (`CREDITS`) et défilement (CreditsRoll : auto, molette, retour), qui ralentit (`EASE`, `CREEP`) puis s'arrête sur le dernier message centré au lieu de boucler ; la butée (`limit`) vient de CreditsScreen, qui isole ce message d'un demi-écran
 - elan/display.py — fenêtre, copie GPU → surface, cadence, résolution dynamique
 - elan/input.py — touches réassignables (2 emplacements/action), lissage souris, assignations manette, navigation menus, MenuKeys
 - elan/settings.py — réglages et leurs valeurs par défaut (`DEFAULTS`), assignations par défaut (`DEFAULT_BINDINGS`, `DEFAULT_PAD`, `DEFAULT_PAD_LOOK`), mode choisi, records chill (score, secteur) et story (score, niveau, temps, nombre de fins), mondes vus (JSON)
