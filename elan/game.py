@@ -12,11 +12,11 @@ from elan.route import Route
 
 
 class Message:
-	def __init__(self, text, kind, ttl):
+	def __init__(self, text, kind, ttl, delay=0.0):
 		self.text = text
 		self.kind = kind
 		self.ttl = ttl
-		self.age = 0.0
+		self.age = -delay
 
 
 class Marker:
@@ -211,10 +211,10 @@ class Game:
 	def gain(self, points):
 		return '  +%d' % points if self.scoring else ''
 
-	def say(self, text, kind='info', ttl=2.6):
+	def say(self, text, kind='info', ttl=2.6, delay=0.0):
 		if self.attract:
 			return
-		self.messages.append(Message(text, kind, ttl))
+		self.messages.append(Message(text, kind, ttl, delay))
 		if len(self.messages) > 4:
 			self.messages.pop(0)
 
@@ -362,7 +362,8 @@ class Game:
 			self.kite.reset(self.world.spawn_pos, self.world.spawn_dir, StoryCfg.ARRIVAL_SPEED)
 		self.messages = []
 		self.say('WELCOME TO THE SINGULARITY', 'big', 8.0)
-		self.say('THE WHITE PORTAL IS OPEN  -  CROSS IT WHENEVER YOU ARE READY', 'info', 11.0)
+		self.say('NO QUOTA  -  NO DRAIN  -  NOTHING LEFT TO CHASE', 'good', 8.0, 2.0)
+		self.say('THE WHITE PORTAL IS OPEN  -  CROSS IT WHENEVER YOU ARE READY', 'info', 11.0, 4.0)
 
 	def enter_tunnel(self, world):
 		self._bind(world)
@@ -1021,7 +1022,7 @@ class Game:
 		hs.grip = self.grip
 		hs.graze = max(kite.graze, self.flow * 0.85)
 		hs.tether_state = 2 if kite.anchor is not None else (1 if self.aim_valid else 0)
-		hs.messages = self.messages
+		hs.messages = [m for m in self.messages if m.age >= 0.0]
 		hs.perf = perf
 		hs.tier = self.tier
 		hs.tier_name = RulesCfg.TIER_NAMES[self.tier]
