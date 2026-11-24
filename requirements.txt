@@ -1,0 +1,5 @@
+# CUDA build of PyTorch (the default PyPI wheel on Windows is CPU-only, and the game needs an NVIDIA GPU)
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch>=2.9
+numpy>=1.24
+pygame>=2.1.2
