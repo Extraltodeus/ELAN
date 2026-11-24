@@ -20,8 +20,10 @@ LOOPS = (
 	('music_drive', 1),
 )
 TAUS = (0.12, 1.5)
-CHANNELS = 32
-RESERVED = len(LOOPS) + 7
+CHANNELS = 34
+RESERVED = len(LOOPS) + 9
+FINALE_CHANNEL = len(LOOPS) + 7
+CREDITS_CHANNEL = len(LOOPS) + 8
 ORB_VOICES = 6
 ORB_GAP = 0.03
 FLUX_PERIOD = 1.2
@@ -125,6 +127,9 @@ class AudioDirector:
 		self.sfx = clamp(sfx_volume)
 		self.pickup = 0.5
 		self.music_folder = None
+		self.finale_path = None
+		self.finale = None
+		self.credits = None
 		self.soundtrack = None
 		self.deck = None
 		self.playlist = None
@@ -174,6 +179,8 @@ class AudioDirector:
 			from .soundtrack import Soundtrack
 			self.soundtrack = Soundtrack(self.music_folder, self.format, self.device)
 			threading.Thread(target=self.load_deck, daemon=True).start()
+			self.finale = self.load_feature('finale', self.finale_path)
+			self.credits = self.load_feature('credits')
 		self.build_time = time.perf_counter() - t0
 		return True
 
@@ -204,6 +211,10 @@ class AudioDirector:
 				self.applied[i] = 0.0
 			if self.soundtrack is not None:
 				self.soundtrack.start(len(LOOPS))
+			if self.finale is not None:
+				self.finale.bind(FINALE_CHANNEL)
+			if self.credits is not None:
+				self.credits.bind(CREDITS_CHANNEL)
 		except Exception:
 			self.channels = []
 
@@ -226,12 +237,19 @@ class AudioDirector:
 		dt = dt if dt > 0.0 else 0.0
 		mode = self.active_mode()
 		scale = self.scales()[1]
-		if mode != 'synth':
+		flying = getattr(mix, 'menu', 0.0) < 0.5
+		crowned = self.finale is not None and self.finale.ready and flying and getattr(mix, 'serene', 0.0) > 0.5
+		rolling = self.credits is not None and self.credits.ready and getattr(mix, 'credits', 0.0) > 0.5
+		if mode != 'synth' or crowned or rolling:
 			targets[8] = targets[9] = targets[10] = targets[11] = 0.0
 		if self.soundtrack is not None and self.soundtrack.ready:
-			self.soundtrack.update(dt, mix, scale, mode == 'linear', mode != 'synth')
+			self.soundtrack.update(dt, mix, scale, mode == 'linear' and not crowned, mode != 'synth' and not rolling)
 		if self.deck is not None:
-			self.deck.update(dt, mix, scale * 0.95, mode == 'dj' and getattr(mix, 'menu', 0.0) < 0.5)
+			self.deck.update(dt, mix, scale * 0.95, mode == 'dj' and flying and not crowned)
+		if self.finale is not None:
+			self.finale.update(crowned, scale * (0.3 if getattr(mix, 'paused', 0.0) > 0.5 else 1.0))
+		if self.credits is not None:
+			self.credits.update(rolling, scale)
 		alphas = (1.0 - math.exp(-dt / TAUS[0]), 1.0 - math.exp(-dt / TAUS[1]))
 		scales = self.scales()
 		cur = self.current
@@ -251,14 +269,14 @@ class AudioDirector:
 				applied[i] = v
 
 	def warn(self, dt, mix):
-		if getattr(mix, 'danger', 0.0) <= 0.5 or getattr(mix, 'paused', 0.0) > 0.5 or getattr(mix, 'menu', 0.0) > 0.5:
+		if getattr(mix, 'danger', 0.0) <= 0.5 or getattr(mix, 'dry', 0.0) > 0.5 or getattr(mix, 'paused', 0.0) > 0.5 or getattr(mix, 'menu', 0.0) > 0.5:
 			self.flux_timer = 0.0
 			return
 		self.flux_timer -= dt
 		if self.flux_timer > 0.0:
 			return
 		self.flux_timer = FLUX_PERIOD
-		self.play('flux_low', 0.7)
+		self.play('flux_low', 0.6)
 
 	def play(self, name, volume=1.0, pan=0.0, pool=None):
 		if not self.enabled or self.muted:
@@ -327,6 +345,14 @@ class AudioDirector:
 				self.applied[i] = v
 		except Exception:
 			pass
+
+	def load_feature(self, name, path=None):
+		from .feature import FeatureTrack
+		track = FeatureTrack(self.soundtrack, self.music_folder, name, path)
+		if not track.available():
+			return None
+		threading.Thread(target=track.load, daemon=True).start()
+		return track
 
 	def load_deck(self):
 		try:
@@ -403,6 +429,9 @@ class AudioDirector:
 	def shutdown(self):
 		if self.deck is not None:
 			self.deck.close()
+		for track in (self.finale, self.credits):
+			if track is not None:
+				track.stop()
 		if not self.enabled:
 			return
 		self.enabled = False

@@ -16,6 +16,7 @@ from elan.devtools import DevTools
 from elan.game import Game
 from elan.modes import MODES, mode_of
 from elan.title import TitleMenu
+from elan.credits import CreditsRoll
 from elan.render import Renderer
 from elan.world import BackgroundBaker
 from elan.audio import AudioDirector
@@ -56,6 +57,7 @@ class App:
 		self.preview = bool(getattr(options, 'finale', False))
 		self.mode = mode_of('story' if self.preview else (getattr(options, 'mode', None) or self.settings.get('game_mode')))
 		self.title = TitleMenu(self.settings, MODES, self.mode, options.autoplay)
+		self.credits = CreditsRoll()
 		self.crowned = None
 		self.first = max(int(options.sector) - 1, 0)
 		self.baker = BackgroundBaker(self.bake_device, self.render_device, 0.0)
@@ -135,6 +137,7 @@ class App:
 		self._loading(0.05, 'tuning instruments')
 		self.audio = AudioDirector(str(self.bake_device), self.settings.get('master_volume'), self.settings.get('music_volume'), self.settings.get('sfx_volume'))
 		self.audio.music_folder = os.path.join(self.root, 'assets', 'music')
+		self.audio.finale_path = getattr(self.options, 'finale_track', None)
 		if self.options.mute:
 			self.audio.enabled = False
 		self.audio.set_music_mode(self.settings.get('music_mode'))
@@ -423,6 +426,19 @@ class App:
 				self.options.autoplay = self.title.autoplay()
 				self._begin_run()
 				return 0.0
+			if action == 'credits':
+				self.audio.play('ui_select', 0.5)
+				self.credits.open()
+				self._enter('credits')
+				return 0.0
+			game.update(dt, self._drive(game, dt))
+			self._travel()
+			return dt
+		if self.state == 'credits':
+			if self.credits.update(dt, menu, self.events) == 'back':
+				self.audio.play('ui_select', 0.5)
+				self._enter('title')
+				return 0.0
 			game.update(dt, self._drive(game, dt))
 			self._travel()
 			return dt
@@ -477,6 +493,9 @@ class App:
 			return
 		if self.state == 'gameover':
 			self.screens.draw_gameover(surface, self.state_time, self.summary)
+			return
+		if self.state == 'credits':
+			self.credits.limit = self.screens.draw_credits(surface, self.state_time, self.credits.view())
 			return
 		state = game.hud_state(self.display.size, self.perf_lines if self.show_perf else None)
 		state.dev = self.dev.lines()
@@ -543,7 +562,9 @@ class App:
 			self.display.flip()
 			flip = time.perf_counter() - now - work
 			self.pacer.wait()
-			self.audio.update(dt, self.game.mix(self.state == 'title', self.state == 'pause'))
+			mix = self.game.mix(self.state in ('title', 'credits'), self.state == 'pause')
+			mix.credits = 1.0 if self.state == 'credits' else 0.0
+			self.audio.update(dt, mix)
 			self.governor.update(dt, work, gpu_wait)
 			self._perf(dt, work, gpu_wait, issue)
 			self.frames += 1

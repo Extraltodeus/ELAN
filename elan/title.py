@@ -8,12 +8,17 @@ class TitleView:
 		self.blurb = ''
 		self.records = []
 		self.tail = None
+		self.link = ''
+		self.link_focus = False
+		self.link_row = 0
 
 
 class TitleMenu:
 	PILOTS = ('FLY', 'AUTO-PLAY')
 	MODE_ROW = 0
 	PILOT_ROW = 1
+	CREDITS_ROW = 2
+	ROWS = 3
 
 	def __init__(self, settings, modes, mode, autoplay):
 		self.settings = settings
@@ -32,9 +37,13 @@ class TitleMenu:
 		return self.pilot == 1
 
 	def _count(self, row):
+		if row == self.CREDITS_ROW:
+			return 1
 		return len(self.modes) if row == self.MODE_ROW else len(self.PILOTS)
 
 	def _value(self, row):
+		if row == self.CREDITS_ROW:
+			return 0
 		return self.mode if row == self.MODE_ROW else self.pilot
 
 	def _pick(self, row, index):
@@ -83,19 +92,24 @@ class TitleMenu:
 	def update(self, menu, events, armed):
 		self.sound = None
 		clicked = self._mouse(events)
-		if menu.up or menu.down:
-			self._focus(1 - self.row)
+		if menu.up:
+			self._focus((self.row - 1) % self.ROWS)
+		if menu.down:
+			self._focus((self.row + 1) % self.ROWS)
 		step = (1 if menu.right else 0) - (1 if menu.left else 0)
 		if step:
 			self._pick(self.row, (self._value(self.row) + step) % self._count(self.row))
 		if not menu.confirm or not armed:
 			return None
-		if menu.click and clicked is not None:
+		if menu.click:
+			if clicked is None:
+				return 'start'
 			self._focus(clicked[0])
 			self._pick(*clicked)
 			if clicked[0] == self.MODE_ROW:
 				return None
-		return 'start'
+			return 'credits' if clicked[0] == self.CREDITS_ROW else 'start'
+		return 'credits' if self.row == self.CREDITS_ROW else 'start'
 
 	def view(self, career, clock):
 		mode = self.current()
@@ -104,6 +118,9 @@ class TitleMenu:
 		out.rows = [('MODE', tuple(m.NAME for m in self.modes), self.mode), ('PILOT', self.PILOTS, self.pilot)]
 		out.focus = self.row
 		out.blurb = mode.BLURB
+		out.link = 'CREDITS'
+		out.link_focus = self.row == self.CREDITS_ROW
+		out.link_row = self.CREDITS_ROW
 		best = int(settings.get(mode.SCORE_KEY))
 		if best:
 			out.records.append(('BEST', '{:,}'.format(best)))

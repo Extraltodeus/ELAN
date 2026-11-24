@@ -82,8 +82,9 @@ def bindings_footer(provider):
 	return "   ".join("%s %s" % p for p in parts)
 
 
-TITLE_HINT = "UP / DOWN mode or pilot  ·  LEFT / RIGHT to choose  ·  SPACE, ENTER or CLICK to start  ·  AUTO-PLAY lets the AI fly"
-TITLE_HINT_PAD = "UP / DOWN mode or pilot  ·  LEFT / RIGHT to choose  ·  SPACE, CLICK or A to start  ·  AUTO-PLAY lets the AI fly"
+TITLE_HINT = "UP / DOWN mode, pilot, credits  ·  LEFT / RIGHT to choose  ·  SPACE, ENTER or CLICK to start  ·  AUTO-PLAY lets the AI fly"
+TITLE_HINT_PAD = "UP / DOWN mode, pilot, credits  ·  LEFT / RIGHT to choose  ·  SPACE, CLICK or A to start  ·  AUTO-PLAY lets the AI fly"
+CREDITS_FOOTER = "ESC or B back  ·  WHEEL or UP / DOWN to scroll"
 
 RULES = (
 	"Flux drains. Motes, grazing rock and skimming the sea refill it.",
@@ -353,6 +354,21 @@ class TitleScreen(BaseScreen):
 			lab.draw(screen, x, y + height // 2, "midleft", alpha * fade)
 			x += lab.w + after
 
+	def draw_link(self, screen, t, view, fade):
+		if not view.link:
+			return []
+		m = self.m
+		focused = view.link_focus
+		label = self.lab(view.link, "small", theme.WHITE if focused else theme.PRIMARY_DIM, spacing=6)
+		x = m.w - m.px(46) - label.w
+		y = m.h - m.px(34) - label.h
+		pulse = 0.8 + 0.2 * math.sin(t * 3.4)
+		label.draw(screen, x, y, "topleft", 255 * fade * (pulse if focused else 0.75))
+		if focused:
+			self.hline(screen, x + label.w // 2, y + label.h + m.px(3), label.w, theme.ACCENT, 240 * fade)
+		pad = m.px(14)
+		return [(pygame.Rect(x - pad, y - pad, label.w + 2 * pad, label.h + 2 * pad), view.link_row, 0)]
+
 	def draw(self, screen, t, view, pad_connected):
 		m = self.m
 		self.shade.draw(screen, fade_at(t, 0.0, 0.6))
@@ -370,6 +386,7 @@ class TitleScreen(BaseScreen):
 		hint = TITLE_HINT_PAD if pad_connected else TITLE_HINT
 		self.lab(hint, "tiny", theme.PRIMARY_DIM, spacing=3).draw(screen, m.cx, y - m.px(28), "midtop", 220 * f2)
 		self.draw_records(screen, view, y, f2)
+		hits.extend(self.draw_link(screen, t, view, f2))
 		f3 = fade_at(t, 1.0)
 		self.sheet.refresh()
 		rh = self.lab(RULES[0], "small", theme.PRIMARY, 1).h
@@ -671,6 +688,81 @@ class GameOverScreen(BaseScreen):
 		return y + line.h
 
 
+class CreditsScreen(BaseScreen):
+	GAP = 34
+	EDGE = 150
+
+	def __init__(self, kit):
+		BaseScreen.__init__(self, kit)
+		self.shade = Shade([(0.0, 0.72), (0.5, 0.66), (1.0, 0.72)], [(0.0, 0.3), (0.3, 0.0), (0.7, 0.0), (1.0, 0.3)])
+		self.rows = None
+		self.span = 0
+		self.source = None
+
+	def resize(self):
+		BaseScreen.resize(self)
+		self.rows = None
+
+	def row(self, entry):
+		m = self.m
+		kind = entry[0]
+		gap = m.px(22)
+		if kind == 'title':
+			label = self.lab(entry[1], "huge", theme.PRIMARY, spacing=40, kind="thin")
+			return label.h + m.px(6), ((label, 0, 0, "midtop"),), None
+		if kind == 'tag':
+			label = self.lab(entry[1], "body", theme.PRIMARY, spacing=6)
+			return label.h + m.px(8), ((label, 0, 0, "midtop"),), None
+		if kind == 'lead':
+			role = self.lab(entry[1], "small", theme.ACCENT, spacing=8)
+			name = self.lab(entry[2], "big", theme.WHITE, spacing=6)
+			return role.h + name.h + m.px(14), ((role, 0, 0, "midtop"), (name, 0, role.h + m.px(4), "midtop")), None
+		if kind == 'head':
+			label = self.lab(entry[1], "small", theme.ACCENT, spacing=8)
+			return label.h + m.px(26), ((label, 0, 0, "midtop"),), (label.h + m.px(6), m.px(150))
+		if kind == 'role':
+			role = self.lab(entry[1], "label", theme.PRIMARY_DIM, spacing=3)
+			name = self.lab(entry[2], "body", theme.WHITE, spacing=2)
+			height = max(role.h, name.h)
+			return height + m.px(10), ((role, -gap, height // 2, "midright"), (name, gap, height // 2, "midleft")), None
+		label = self.lab(entry[1], "body", theme.PRIMARY, spacing=2)
+		return label.h + m.px(10), ((label, 0, 0, "midtop"),), None
+
+	def layout(self, entries):
+		m = self.m
+		self.source = entries
+		self.rows = []
+		y = 0
+		for entry in entries:
+			if entry[0] == 'gap':
+				y += m.px(self.GAP) * entry[1]
+				continue
+			height, labels, rule = self.row(entry)
+			self.rows.append((y, height, labels, rule))
+			y += height
+		self.span = y
+
+	def draw(self, screen, t, view):
+		m = self.m
+		if self.rows is None or self.source is not view.entries:
+			self.layout(view.entries)
+		fade = fade_at(t, 0.0, 0.4)
+		self.shade.draw(screen, fade)
+		top = m.h - int(view.offset * m.s)
+		edge = float(m.px(self.EDGE))
+		for y, height, labels, rule in self.rows:
+			ys = top + y
+			if ys > m.h or ys + height < 0:
+				continue
+			alpha = 255 * fade * clamp01(min(ys + height * 0.5, m.h - ys - height * 0.5) / edge)
+			for label, dx, dy, anchor in labels:
+				label.draw(screen, m.cx + dx, ys + dy, anchor, alpha)
+			if rule:
+				self.hline(screen, m.cx, ys + rule[0], rule[1], theme.ACCENT, alpha * 0.8)
+		self.lab(CREDITS_FOOTER, "tiny", theme.PRIMARY_DIM, spacing=3).draw(screen, m.px(46), m.h - m.px(34), "bottomleft", 200 * fade)
+		return (self.span + m.h) / m.s
+
+
 class Screens:
 	def __init__(self, size):
 		self.kit = Kit(size)
@@ -679,6 +771,7 @@ class Screens:
 		self.pause = PauseScreen(self.kit)
 		self.controls = ControlsScreen(self.kit)
 		self.gameover = GameOverScreen(self.kit)
+		self.credits = CreditsScreen(self.kit)
 		self.provider = DefaultBindings()
 		self.size = None
 		self.resize(size)
@@ -696,7 +789,7 @@ class Screens:
 			return
 		self.size = size
 		self.kit.resize(size)
-		for s in (self.loading, self.title, self.pause, self.controls, self.gameover):
+		for s in (self.loading, self.title, self.pause, self.controls, self.gameover, self.credits):
 			s.resize()
 
 	def check(self, screen):
@@ -728,3 +821,7 @@ class Screens:
 	def draw_gameover(self, screen, t, summary):
 		self.check(screen)
 		self.gameover.draw(screen, t, summary)
+
+	def draw_credits(self, screen, t, view):
+		self.check(screen)
+		return self.credits.draw(screen, t, view)

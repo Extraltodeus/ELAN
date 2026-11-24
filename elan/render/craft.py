@@ -48,6 +48,10 @@ class CraftPoints:
 		self.body_color = None
 		self.dart_color = None
 		self.flame_color = torch.tensor((0.2, 0.55, 1.0), device=device).view(1, 3) * 0.3
+		ember = torch.tensor((0.1, 0.12, 1.0), device=device)
+		self.alarm_color = (ember.view(1, 3) * 1.5 * self.weights).contiguous()
+		self.alarm_trail = (ember * 0.09).view(1, 1, 3).contiguous()
+		self.alarm = 0.0
 		self.trail = torch.zeros((self.TRAIL, 2, 3), device=device)
 		age = torch.arange(self.TRAIL, device=device, dtype=torch.float32) / self.TRAIL
 		self.ramp = (age ** 2).view(-1, 1, 1).contiguous()
@@ -112,6 +116,7 @@ class CraftPoints:
 		self.sheath = craft.get('sheath', 0.0)
 		self.surge = craft.get('surge', 0.0)
 		self.rush = craft.get('rush', 0.0)
+		self.alarm = craft.get('alarm', 0.0)
 		r, u, f = craft['right'], craft['up'], craft['forward']
 		amount = craft.get('stretch', 0.0)
 		self.swept = min(amount * FlightCfg.SWEEP, 1.0)
@@ -144,10 +149,13 @@ class CraftPoints:
 		self.head = (self.head + 2) % self.TRAIL
 		fade = torch.roll(self.ramp, self.head, 0)
 		strength = 0.25 + 1.75 * self.heat + 1.3 * self.sheath + 1.5 * self.rush
+		alarm = self.alarm
+		wake = self.trail_color if alarm < 0.01 else torch.lerp(self.trail_color, self.alarm_trail, alarm)
+		body = self.body_color if alarm < 0.01 else torch.lerp(self.body_color, self.alarm_color, alarm)
 		points.append(self.trail.view(-1, 3))
-		colors.append((self.trail_color * fade).mul_(strength).expand(self.TRAIL, 2, 3).reshape(-1, 3))
+		colors.append((wake * fade).mul_(strength).expand(self.TRAIL, 2, 3).reshape(-1, 3))
 		points.append(torch.addcmul(self.fresh_from, self.fresh_u, self.fresh_step).view(-1, 3))
-		colors.append((self.trail_color * strength).expand(self.FRESH, 2, 3).reshape(-1, 3))
+		colors.append((wake * strength).expand(self.FRESH, 2, 3).reshape(-1, 3))
 		if not self.visible:
 			return
 		morph = self.morph
@@ -155,11 +163,11 @@ class CraftPoints:
 		if morph < 0.004:
 			solid = torch.add(self.solid, self.sweep, alpha=self.swept) if self.swept > 0.02 else self.solid
 			points.append(torch.matmul(solid, self.basis).add_(self.pos))
-			colors.append(self.body_color * (1.0 + 1.6 * self.rush) if self.rush > 0.02 else self.body_color)
+			colors.append(body * (1.0 + 1.6 * self.rush) if self.rush > 0.02 else body)
 			colors.append(flame)
 			return
 		pulse = 4.0 * morph * (1.0 - morph)
 		points.append(torch.matmul(torch.add(self.model, self.delta, alpha=morph), self.basis).add_(self.pos))
-		colors.append(torch.lerp(self.body_color, self.dart_color, morph).mul_(1.0 + 2.4 * pulse + 1.3 * self.surge * morph))
+		colors.append(torch.lerp(body, self.dart_color, morph).mul_(1.0 + 2.4 * pulse + 1.3 * self.surge * morph))
 		colors.append(flame)
 		colors.append(self.sheath_color * (self.sheath * (0.6 + 0.9 * self.surge)))

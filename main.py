@@ -28,6 +28,7 @@ def parse():
 	parser.add_argument('--pilot', default=None)
 	parser.add_argument('--mode', choices=('chill', 'story'), default=None)
 	parser.add_argument('--finale', action='store_true')
+	parser.add_argument('--finale-track', default=None)
 	parser.add_argument('--developper', '--developer', '--dev', dest='developer', action='store_true')
 	options = parser.parse_args()
 	width, _, height = options.window.lower().partition('x')

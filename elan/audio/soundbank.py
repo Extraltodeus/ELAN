@@ -2,12 +2,14 @@ import math
 
 import torch
 
+from elan.config import RulesCfg
+
 from .music import MusicLayers, midi_hz
 from .synth import Synth
 
 LOOP_NAMES = ('wind_low', 'wind_mid', 'wind_high', 'engine', 'boost', 'graze', 'tether', 'skim')
 MUSIC_NAMES = ('music_pad', 'music_bass', 'music_arp', 'music_drive')
-SHOT_NAMES = ('tether_fire', 'tether_release', 'crash', 'skim_hit', 'gate_open', 'warp', 'ribbon', 'flux_low', 'game_over', 'ui_move', 'ui_select', 'start')
+SHOT_NAMES = ('tether_fire', 'tether_release', 'crash', 'skim_hit', 'gate_open', 'warp', 'ribbon', 'flux_low', 'flux_dry', 'game_over', 'ui_move', 'ui_select', 'start')
 PENTATONIC = (0, 3, 5, 7, 10)
 
 
@@ -268,15 +270,31 @@ class OneShotFactory:
 
 	def make_flux_low(self):
 		s = self.s
-		n = s.samples(0.45)
+		n = s.samples(0.75)
 		t = s.time(n)
 		x = s.zeros(n)
-		for start, f in ((0.0, 392.0), (0.17, 330.0)):
-			d = t - start
-			env = s.ramp(d, 0.0, 0.006) * (1.0 - s.ramp(d, 0.09, 0.035))
-			ph = torch.remainder(f * d.clamp_min(0.0), 1.0)
-			x = x + (s.sin(ph) + 0.25 * s.sin(ph * 2.0)) * env
-		return s.stereo(x)
+		for start, f in ((0.0, 196.0), (0.2, 164.8)):
+			d = (t - start).clamp_min(0.0)
+			env = s.ramp(t - start, 0.0, 0.03) * (1.0 - s.ramp(t - start, 0.12, 0.14))
+			voice = s.sin(torch.remainder(f * d, 1.0)) + 0.5 * s.sin(torch.remainder(f * 0.5 * d, 1.0)) + 0.12 * s.sin(torch.remainder(f * 2.0 * d, 1.0))
+			x = x + voice * env
+		x = s.filter(x, Synth.lowpass(900.0, 1))
+		return s.space(x, s.reverb_ir(0.6, 0.5, 3000.0), 0.2, False)
+
+	def make_flux_dry(self):
+		s = self.s
+		n = s.samples(1.7)
+		t = s.time(n)
+		rise = (t / RulesCfg.BREATH_SWELL).clamp(0.0, 1.0)
+		swell = torch.sin(rise * math.pi).pow(2)
+		turns = torch.cumsum((52.0 - 5.0 * rise).double() / s.sr, -1)
+		tone = s.zeros(n)
+		for order, level in ((1, 1.0), (2, 0.8), (3, 0.6), (4, 0.42), (5, 0.25), (6, 0.12)):
+			tone = tone + level * s.sin(torch.remainder(turns * order, 1.0).float())
+		tone = torch.tanh(tone * 0.6) * swell
+		breath = self.noise(n, Synth.bandpass(160.0, 620.0, 2)) * swell.pow(2) * 0.14
+		air = self.noise(n, Synth.bandpass(1800.0, 5000.0, 1)) * swell.pow(3) * 0.012
+		return s.space(s.stereo(tone) + breath + air, s.reverb_ir(1.2, 1.0, 2500.0), 0.22, False)
 
 	def make_game_over(self):
 		s = self.s

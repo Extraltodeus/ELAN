@@ -107,6 +107,8 @@ class Mix:
 		self.paused = 0.0
 		self.submerged = 0.0
 		self.serene = 0.0
+		self.dry = 0.0
+		self.credits = 0.0
 
 
 class Game:
@@ -193,6 +195,8 @@ class Game:
 		self.grip = 1.0
 		self.step = 0.0
 		self.guide = None
+		self.breath = RulesCfg.BREATH_PERIOD
+		self.alarm = 0.0
 		self.mode = MODES[0]
 		self.finale = False
 		self.plunge = False
@@ -236,6 +240,8 @@ class Game:
 		self.sealed = None
 		self.finale_time = 0.0
 		self.horizon = 0.0
+		self.breath = RulesCfg.BREATH_PERIOD
+		self.alarm = 0.0
 		self.time = 0.0
 		self.sector = sector
 		self.phase = 'sector'
@@ -448,6 +454,7 @@ class Game:
 		self._rings(dt)
 		self._gate()
 		self._flux(dt)
+		self._breathe(dt)
 		if self.sealed is not None:
 			self.score = self.sealed[0]
 		for message in self.messages:
@@ -833,7 +840,6 @@ class Game:
 		self.flux = min(max(self.flux + (gain - drain) * dt, 0.0), 1.0)
 		if not self.dry and self.flux <= 0.0:
 			self.dry = True
-			self.audio.play('flux_low', 1.0)
 			self.audio.music_event('crash')
 			self.say('FLUX DEPLETED', 'bad', 2.6)
 		elif self.dry and self.flux >= rules.FLUX_RELIGHT:
@@ -842,6 +848,20 @@ class Game:
 			self.audio.play('start', 0.7)
 			self.say('FLUX RELIT', 'good', 2.0)
 		self._strand(dt)
+
+	def _breathe(self, dt):
+		rules = RulesCfg
+		if not self.dry or self.over or self.attract:
+			self.breath = rules.BREATH_PERIOD
+			self.alarm = max(self.alarm - dt * 2.0, 0.0)
+			return
+		self.breath += dt
+		if self.breath >= rules.BREATH_PERIOD:
+			self.breath = 0.0
+			self.audio.play('flux_dry', rules.BREATH_VOLUME)
+		swell = math.sin(math.pi * min(self.breath / rules.BREATH_SWELL, 1.0)) ** 2
+		target = rules.BREATH_FLOOR + (1.0 - rules.BREATH_FLOOR) * swell
+		self.alarm += (target - self.alarm) * min(dt * 10.0, 1.0)
 
 	def _strand(self, dt):
 		kite = self.kite
@@ -902,6 +922,7 @@ class Game:
 		view.flash = self.flash
 		view.damage = self.damage
 		view.persistence = min(math.exp(-dt / 0.0065), 0.5)
+		camera.craft['alarm'] = self.alarm
 		view.craft = camera.craft
 		view.submerged = camera.submerged()
 		if view.submerged:
@@ -1046,4 +1067,5 @@ class Game:
 		mix.paused = 1.0 if paused else 0.0
 		mix.submerged = 1.0 if self.camera.submerged() else 0.0
 		mix.serene = 1.0 if self.finale else 0.0
+		mix.dry = 1.0 if self.dry and not self.over and not self.attract else 0.0
 		return mix
