@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+elan_settings.json
+elan_error.log
+screenshots/
+assets/
