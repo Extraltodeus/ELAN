@@ -6,7 +6,7 @@ CREDITS = (
 	('title', 'ÉLAN'),
 	('tag', 'momentum is everything'),
 	('gap', 3),
-	('lead', 'DIRECTION AND PLAYTESTING', 'Extraltodeus'),
+	('lead', 'DIRECTION & PLAYTESTING', 'Extraltodeus'),
 	('gap', 2),
 	('head', 'DESIGN'),
 	('role', 'GAME DESIGN', STUDIO),
