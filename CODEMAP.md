@@ -2,7 +2,7 @@
 
 Jeu de vol à inertie en 3D : rendu raymarché entièrement en PyTorch, fenêtre/entrées/son via Pygame.
 
-Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` écran 1, 2, 3… (sinon réglage SCREEN), `--gpu N`, `--bake-gpu N`, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--seed N`, `--mute`, `--perf`, `--autoplay`, `--frames N`, `--shots DIR`, `--sector N` départ au secteur N, `--quota N` quota plafonné pour les tests, `--pilot FICHIER` autre pilote IA, `--developper` mode développeur, `--mode chill|story` force le mode, `--finale` démarre directement dans la Singularité, `--finale-track FICHIER.wav` joue un autre WAV dans la finale, avec les points de boucle du `.json` voisin).
+Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` écran 1, 2, 3… (sinon réglage SCREEN), `--gpu N`, `--bake-gpu N` génération + audio sur un autre GPU, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--seed N`, `--mute`, `--perf`, `--autoplay`, `--frames N`, `--shots DIR`, `--sector N` départ au secteur N, `--quota N` quota plafonné pour les tests, `--pilot FICHIER` autre pilote IA, `--developper` mode développeur, `--mode chill|story` force le mode, `--finale` démarre directement dans la Singularité, `--finale-track FICHIER.wav` joue un autre WAV dans la finale, avec les points de boucle du `.json` voisin).
 
 ## Fichiers
 - main.py — entrée, arguments
@@ -53,7 +53,7 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` éc
 - detail.py — volume de détail roche, rides de la mer
 - paths.py — rubans de motes (marge aux parois, cônes de sortie), rubans immergés, anneaux, départ aligné sur une ribambelle, porte ; style `cruise` : couloirs en altitude au-dessus du décor
 - bake.py — orchestration, objet World (secteur ou tunnel), envoi sur le GPU de rendu ; natures demandées : `sector`, `tunnel`, `plunge`, `singularity`
-- baker_thread.py — file de génération en arrière-plan (tunnel puis secteur suivant, 2e GPU), demandes urgentes, purge des mondes non attendus (`expect`), cache GPU rendu hors vol seulement (`trim`, appelé en pause / titre / game over)
+- baker_thread.py — file de génération en arrière-plan (tunnel puis secteur suivant, GPU de rendu sauf `--bake-gpu`), demandes urgentes, purge des mondes non attendus (`expect`), cache GPU rendu hors vol seulement (`trim`, appelé en pause / titre / game over)
 
 ### elan/render — rendu (PyTorch)
 - renderer.py — orchestration d'une frame, View
@@ -118,7 +118,7 @@ Sans sortie sonore : variable d'environnement `SDL_AUDIODRIVER=dummy` (le moteur
 Les parties AUTO-PLAY ou lancées avec `--autoplay`, `--sector`, `--quota`, `--finale`, `--developper` ne touchent ni aux records ni au tableau des scores (F2 reste libre en mode développeur).
 
 ## Matériel
-- Deux GPU : rendu sur `--gpu` (0 par défaut), génération des mondes et synthèse audio sur l'autre. Un seul GPU : tout sur le même (`App._devices`), vérifié sur une RTX 4070 seule : ~58 fps en 1280×720 à 50 %, quelques à-coups pendant la génération du monde suivant, pic de ~3,6 Go alloués (~5,4 Go réservés). Sans CUDA : repli CPU qui démarre (~2 min de chargement) mais reste injouable (~1 image/s en 320×180), signalé sur l'écran de chargement ; un GPU NVIDIA est requis en pratique.
+- Par défaut tout tourne sur un seul GPU : rendu, génération des mondes et synthèse audio sur `--gpu` (0 par défaut, `App._devices`) — plus fluide en pratique que la génération sur le 2e GPU ; `--bake-gpu N` la déplace sur un autre. Vérifié sur une RTX 4070 seule : ~58 fps en 1280×720 à 50 %, quelques à-coups pendant la génération du monde suivant, pic de ~3,6 Go alloués (~5,4 Go réservés). Sans CUDA : repli CPU qui démarre (~2 min de chargement) mais reste injouable (~1 image/s en 320×180), signalé sur l'écran de chargement ; un GPU NVIDIA est requis en pratique.
 - Sans musique (ni `assets/music` ni `assets/music_ogg`) : musique synthétisée ; sans `assets/ai/pilot.pt` : autopilote classique ; sans `assets/splash.png` : pas d'image de chargement.
 
 ## Outils

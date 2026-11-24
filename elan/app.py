@@ -95,9 +95,7 @@ class App:
 		count = torch.cuda.device_count()
 		render = options.gpu if options.gpu is not None else 0
 		render = max(0, min(render, count - 1))
-		bake = options.bake_gpu
-		if bake is None:
-			bake = next((i for i in range(count) if i != render), render)
+		bake = options.bake_gpu if options.bake_gpu is not None else render
 		bake = max(0, min(bake, count - 1))
 		return torch.device('cuda:%d' % render), torch.device('cuda:%d' % bake)
 
