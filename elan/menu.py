@@ -2,7 +2,7 @@ import pygame
 
 from elan.input import RESERVED_KEYS, binding_name, bindable_button, key_binding, mouse_binding, pad_binding
 from elan.settings import ACTIONS, GYRO_AXES, MINIMAP_MODES, PAD_ACTIONS, PAD_LOOKS
-from elan.ui import ACTION_NAMES, ControlsView
+from elan.ui import ACTION_NAMES, OPTIONS_FOOTER, ControlsView
 
 SCALE_CHOICES = ('auto', 0.5, 0.67, 0.75, 0.83, 1.0)
 BACK_GUARD = 0.15
@@ -151,6 +151,7 @@ class HoverTracker:
 class MainPage:
 	TITLE = 'PAUSED'
 	PARENT = None
+	FOOTER = None
 
 	def __init__(self, menu, settings):
 		self.menu = menu
@@ -162,9 +163,10 @@ class MainPage:
 		return None
 
 	def build(self, menu, settings):
+		return [ActionOption('RESUME', 'resume'), ActionOption('RESTART RUN', 'restart')] + self.tuning(menu, settings) + [ActionOption('MAIN MENU', 'title'), ActionOption('QUIT TO DESKTOP', 'quit')]
+
+	def tuning(self, menu, settings):
 		return [
-			ActionOption('RESUME', 'resume'),
-			ActionOption('RESTART RUN', 'restart'),
 			PageOption('CONTROLS…', menu, 'controls'),
 			PageOption('GAMEPAD…', menu, 'gamepad'),
 			RangeOption('MOUSE SENSITIVITY', settings, 'mouse_sensitivity', 0.2, 3.0, 0.1, lambda v: '%.1f' % v),
@@ -173,7 +175,7 @@ class MainPage:
 			CycleOption('CAMERA', settings, 'camera', ('chase', 'cockpit'), ('CHASE', 'COCKPIT')),
 			RangeOption('SCREEN SHAKE', settings, 'screen_shake', 0.0, 2.0, 0.1, percent),
 			CycleOption('WARP EFFECT', settings, 'warp_effect', (True, False), ('ON', 'OFF')),
-			CycleOption('AI PILOT (F2)', settings, 'ai_pilot', (True, False), ('LEARNED', 'CLASSIC')),
+			CycleOption('AI PILOT TYPE', settings, 'ai_pilot', (True, False), ('LEARNED', 'CLASSIC')),
 			CycleOption('MINIMAP', settings, 'minimap', MINIMAP_MODES, ('BOTTOM RIGHT', 'BOTTOM LEFT', 'TOP RIGHT', 'TOP CENTER', 'OFF')),
 			CycleOption('RENDER SCALE', settings, 'render_scale', SCALE_CHOICES, tuple(scale_name(c) for c in SCALE_CHOICES)),
 			RangeOption('MASTER VOLUME', settings, 'master_volume', 0.0, 1.0, 0.05, percent),
@@ -182,8 +184,6 @@ class MainPage:
 			RangeOption('PICKUP VOLUME', settings, 'pickup_volume', 0.0, 1.0, 0.05, percent),
 			CycleOption('MUSIC', settings, 'music_mode', ('dj', 'linear', 'synth'), ('DJ STEMS', 'LINEAR', 'SYNTH')),
 			FullscreenOption(menu),
-			ActionOption('MAIN MENU', 'title'),
-			ActionOption('QUIT TO DESKTOP', 'quit'),
 		]
 
 	def reset(self):
@@ -258,7 +258,15 @@ class MainPage:
 
 	def draw(self, surface, t):
 		screens = self.menu.screens
-		self.hover.hits = screens.draw_pause(surface, t, self.items(), self.index, self.TITLE, None, self.note()) or []
+		self.hover.hits = screens.draw_pause(surface, t, self.items(), self.index, self.TITLE, self.FOOTER, self.note()) or []
+
+
+class OptionsPage(MainPage):
+	TITLE = 'OPTIONS'
+	FOOTER = OPTIONS_FOOTER
+
+	def build(self, menu, settings):
+		return self.tuning(menu, settings) + [ActionOption('BACK', 'resume')]
 
 
 class GamepadPage(MainPage):
@@ -477,19 +485,22 @@ class PauseMenu:
 		self.sound = None
 		self.age = 0.0
 		self.main = MainPage(self, settings)
+		self.options = OptionsPage(self, settings)
 		self.controls = ControlsPage(self, input_manager)
 		self.gamepad = GamepadPage(self, settings)
 		self.pages = {'main': self.main, 'controls': self.controls, 'gamepad': self.gamepad}
 		self.page = self.main
 		screens.set_bindings(input_manager)
 
-	def open(self):
+	def open(self, standalone=False):
+		root = self.options if standalone else self.main
 		self.age = 0.0
 		self.sound = None
-		self.main.reset()
+		root.reset()
 		self.gamepad.reset()
 		self.controls.reset()
-		self.page = self.main
+		self.pages['main'] = root
+		self.page = root
 
 	def show(self, name):
 		page = self.pages[name]

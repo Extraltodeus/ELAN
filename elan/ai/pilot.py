@@ -17,7 +17,6 @@ class LearnedPilot:
 	ENDURANCE = 14.0
 	APPROACH = (320.0, 0.75, 60.0, 0.25, 0.3, 90.0)
 	CAUTION = (0.35, 8.0, 0.8, 6.0, 0.3, 60.0, 90.0)
-	SERENE = 95.0
 	SHIELD = True
 
 	def __init__(self, path):
@@ -185,9 +184,6 @@ class LearnedPilot:
 		controls.look_y = -self.rates[1] * dt
 		controls.thrust = self.thrust
 		controls.boost = float(action[3]) > 0.0 and (self.hyper or game.flux > self.reserve) and not (game.gate_open and not self.tunnel)
-		if game.finale:
-			controls.boost = False
-			controls.thrust = 0.0 if game.kite.speed > self.SERENE else controls.thrust
 		if not self.tunnel:
 			soon, tight, later, close, idle, brisk, swift = self.CAUTION
 			kite = game.kite

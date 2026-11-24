@@ -7,7 +7,7 @@ from elan.config import FlightCfg
 from elan.gamepad import BACK, CONFIRM, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_UP, Gamepad, pad_code, pad_label, pad_rows
 from elan.gyro import TiltSteer
 from elan.physics import Controls
-from elan.settings import ACTIONS, CAMERA_MODES, DEFAULT_BINDINGS, DEFAULT_PAD
+from elan.settings import ACTIONS, CAMERA_MODES, DEFAULT_BINDINGS, DEFAULT_PAD, DEFAULT_PAD_LOOK
 
 RESERVED_KEYS = (pygame.K_ESCAPE, pygame.K_F2, pygame.K_F3, pygame.K_F11, pygame.K_F12, pygame.K_m, pygame.K_BACKSPACE, pygame.K_DELETE)
 WHEEL_BUTTONS = (4, 5)
@@ -440,7 +440,7 @@ class InputManager:
 	def reset_bindings(self):
 		self.bindings.reset()
 		self.settings.set('pad_bindings', dict(DEFAULT_PAD))
-		self.settings.set('pad_look', 'right')
+		self.settings.set('pad_look', DEFAULT_PAD_LOOK)
 
 	def binding_version(self):
 		return self.bindings.version

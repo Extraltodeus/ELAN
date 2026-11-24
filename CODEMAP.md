@@ -7,15 +7,16 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--ba
 ## Fichiers
 - main.py — entrée, arguments
 - elan/config.py — toutes les constantes (monde, tunnel, rendu, vol, règles)
-- elan/app.py — boucle principale, états (titre, crédits, jeu, pause, game over / fin d'histoire), enchaînement secteur → tunnel → secteur selon le mode, records par mode
+- elan/app.py — boucle principale, états (titre, options, scores, crédits, jeu, pause, game over / fin d'histoire), enchaînement secteur → tunnel → secteur selon le mode, records par mode, encaissement du score à chaque fin de partie (`_bank` / `_record`), verrou du pilote IA (`_toggle_pilot`, `piloted`)
 - elan/modes.py — modes de jeu (Mode, ChillMode, StoryMode) : pente de consommation, nombre de niveaux, chrono, clés de records, nature du tunnel / monde suivant
-- elan/title.py — menu du titre (TitleMenu) : rangée MODE, rangée PILOT, lien CREDITS, souris / molette, mode mémorisé
+- elan/title.py — menu du titre (TitleMenu) : rangée MODE, rangée PILOT, liens OPTIONS / SCORES / CREDITS (`LINKS`), souris / molette, mode mémorisé
+- elan/scores.py — tableau des scores (ScoreBoard) : top `AppCfg.SCORES_KEPT` par mode dans `elan_scores.json`, repris du record existant au premier lancement
 - elan/credits.py — générique : contenu (`CREDITS`) et défilement (CreditsRoll : auto, molette, retour)
 - elan/display.py — fenêtre, copie GPU → surface, cadence, résolution dynamique
 - elan/input.py — touches réassignables (2 emplacements/action), lissage souris, assignations manette, navigation menus, MenuKeys
-- elan/settings.py — réglages, assignations par défaut, mode choisi, records chill (score, secteur) et story (score, niveau, temps, nombre de fins), mondes vus (JSON)
+- elan/settings.py — réglages et leurs valeurs par défaut (`DEFAULTS`), assignations par défaut (`DEFAULT_BINDINGS`, `DEFAULT_PAD`, `DEFAULT_PAD_LOOK`), mode choisi, records chill (score, secteur) et story (score, niveau, temps, nombre de fins), mondes vus (JSON)
 - elan/career.py — progression par mode : secteur / niveau record, rang, mondes découverts, messages NEW FRONTIER / NEW WORLD
-- elan/menu.py — menu pause (PauseMenu) : page principale, page CONTROLS (clavier/souris + manette) avec capture
+- elan/menu.py — menu pause (PauseMenu) : page principale, page OPTIONS (mêmes réglages, ouverte depuis le titre par `open(True)`), page CONTROLS (clavier/souris + manette) avec capture
 - elan/layout.py — emplacement de la minimap (partagé rendu / HUD)
 - elan/gamepad.py — manette : lecture standardisée (API contrôleur SDL, repli joystick brut), boutons/axes virtuels, libellés
 - elan/gyro.py — gyroscope de la manette (capteur SDL via ctypes) et pilotage par inclinaison
@@ -74,8 +75,8 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--ba
 - post.py — rémanence, lentille du trou noir (avant le bloom), bloom, aberration de vitesse, distorsion warp, torsion + étirement de sortie de tunnel (surge), tonemap, incrustation minimap, sortie BGRX
 
 ### elan/audio — son procédural
-- synth.py, music.py, soundbank.py — synthèse des boucles et effets (dont `flux_low` : alerte avant la panne, `flux_dry` : souffle grave de la panne sèche)
-- director.py — mixage adaptatif, rotation des morceaux par secteur avec préchargement, effets joués sur des voix dédiées
+- synth.py, music.py, soundbank.py — synthèse des boucles et effets (dont `flux_low` : battement de cœur sourd avant la panne, `flux_dry` : souffle grave de la panne sèche)
+- director.py — mixage adaptatif, rotation des morceaux par secteur avec préchargement, effets joués sur des voix dédiées, battement d'alerte qui accélère et monte quand le flux approche de zéro (`FLUX_PERIOD`, `FLUX_VOLUME`)
 - lowpass.py — filtre passe-bas par FFT sur CPU (couche « sous l'eau » des morceaux), sans mémoire GPU
 - voices.py — réserve de voix pour les effets (VoicePool) : une pour les motes, une pour le reste, jamais les canaux de boucles ou de musique
 - playlist.py — liste de lecture (`music.json`), rotation des morceaux
@@ -85,24 +86,26 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--ba
 - finale sans `finale.wav` (`mix.serene`) : DJ = stem mélodie seul (ni batterie ni basse), linéaire = couche filtrée, synthé = nappe + arpège doux
 
 ### elan/ui — interface
-- hud.py (dont barre de tunnel, marqueur de l'entrée suivante, panneau développeur, chrono, libellé niveau / secteur), screens.py (titre à deux rangées + lien crédits, records du mode, écran de fin : game over ou fin d'histoire avec temps, générique défilant), text.py, shapes.py, theme.py
+- hud.py (dont barre de tunnel, marqueur de l'entrée suivante, panneau développeur, chrono, libellé niveau / secteur, score remplacé par AUTO-PLAY dans une partie sans score), screens.py (titre à deux rangées + liens en bas à droite, records du mode, écran de fin : game over ou fin d'histoire avec temps et top 10 du mode, ScoreTable / ScoresScreen : tableaux CHILL et STORY, générique défilant), text.py, shapes.py, theme.py
 
-## Contrôles (réassignables dans Pause → CONTROLS)
-Souris : viser · W/Z : poussée · S : aérofrein · A/Q, D : latéral · Espace/Shift : boost · Clic gauche (tenu) : grappin · Clic droit (tenu) : dérive · V : caméra poursuite/cockpit · Échap : pause · R : recommencer · F2 : pilote IA · F3 : stats · F11 : plein écran · F12 : capture · M : muet.
-Manette : stick droit viser · RT poussée · LT frein · stick gauche latéral · A boost · RB grappin · LB dérive · Start pause.
+## Contrôles (réassignables dans OPTIONS ou Pause → CONTROLS)
+Souris : viser · W/Z : poussée · S : aérofrein · A/Q, D : latéral · Espace : boost · Clic gauche ou E (tenu) : grappin · Shift gauche (tenu) : dérive · V : caméra poursuite/cockpit · Échap : pause · P : recommencer · F2 : pilote IA (parties AUTO-PLAY seulement) · F3 : stats · F11 : plein écran · F12 : capture · M : muet.
+Manette : stick gauche viser · RT poussée · LT frein · stick droit latéral · RB boost · A grappin · LB dérive · Y caméra · X gyro · B recentrer le gyro · Start pause.
 
 ## Modes
 - CHILL : infini, consommation `FLUX_DRAIN + secteur × FLUX_DRAIN_SECTOR`, but = score.
-- STORY : `StoryCfg.LEVELS` (42) niveaux, pente de consommation × `StoryCfg.DRAIN_GAIN` (1.8), chronométré, game over = retour au niveau 1. Après le niveau 42 : tunnel EVENT HORIZON (flux infini, poussée croissante, le trou noir avale l'écran) → THE SINGULARITY : score et chrono figés à l'arrivée, flux infini, plus de motes ni d'anneaux, portail blanc déjà ouvert (le pilote IA ne le vise qu'après `StoryCfg.PORTAL_DELAY` s) → écran des scores. Records story séparés (score, meilleur temps, nombre de fins).
+- STORY : `StoryCfg.LEVELS` (42) niveaux, pente de consommation × `StoryCfg.DRAIN_GAIN` (1.8), chronométré, game over = retour au niveau 1. Après le niveau 42 : tunnel EVENT HORIZON (flux infini, poussée croissante, le trou noir avale l'écran) → THE SINGULARITY : score et chrono figés à l'arrivée, flux infini, plus de motes ni d'anneaux, sillage FLOW qui monte à plein en `1 / StoryCfg.FINALE_FLOW` s et y reste (~230 m/s en boost au lieu de ~150), portail blanc déjà ouvert (le pilote IA ne le vise qu'après `StoryCfg.PORTAL_DELAY` s) → écran des scores → confirmation = menu principal. Records story séparés (score, meilleur temps, nombre de fins).
 - Le fond du titre vole toujours en règles chill ; le mode s'applique au lancement d'une partie.
+- Pilote : FLY ou AUTO-PLAY, choisi sur le titre pour toute la partie. FLY : F2 est verrouillé. AUTO-PLAY : F2 rend / reprend la main, aucun score n'est compté (`Game.scoring`), rien n'entre au tableau.
+- Scores : toute partie FLY non assistée est encaissée à sa fin (défaite, fin d'histoire, retour au menu, recommencer, quitter) : record du mode + tableau.
 
 ## Jeu
 Le flux se vide ; motes, anneaux, frôlements, ricochets et sorties d'eau le rechargent. Enchaîner crée un sillage (moins de traînée) → paliers FLOW I/II/III. Mer : angle rasant = ricochet, angle franc = plongée. Quota rempli → porte → tunnel warp sur rail (poussée automatique, recentrage, ni paroi ni marche arrière, flux qui ne se vide pas, lignes de motes en hélice à 5–15 m de l'axe : une partie se ramasse sans effort, le reste en suivant la ligne) → distorsion de sortie → secteur suivant, départ aligné sur une ribambelle. Tous les 10 secteurs : tunnel hyper (3× plus long, flux infini, poussée supplémentaire).
-Flux à zéro : plus de poussée, et l'adhérence fond avec la vitesse selon une courbe (`DRY_GRIP_SPEED` 120 : début, ~1/3 perdu à 60, dérive totale à `DRY_DRIFT_SPEED` 15 ; exposant `DRY_CURVE`) ; à l'arrêt près du sol ou de la mer → STALLED → game over. Tant que le flux est à zéro, le vaisseau respire en rouge au rythme d'un souffle grave (`Game._breathe`, `RulesCfg.BREATH_*`) ; le bip d'alerte ne joue plus qu'avant la panne.
+Flux à zéro : plus de poussée, et l'adhérence fond avec la vitesse selon une courbe (`DRY_GRIP_SPEED` 120 : début, ~1/3 perdu à 60, dérive totale à `DRY_DRIFT_SPEED` 15 ; exposant `DRY_CURVE`) ; à l'arrêt près du sol ou de la mer → STALLED → game over. Sous 15 % de flux, un battement de cœur sourd s'accélère jusqu'à la panne ; tant que le flux est à zéro, le vaisseau respire en rouge au rythme d'un souffle grave (`Game._breathe`, `RulesCfg.BREATH_*`).
 Biomes : EMBER DUSK, GLACIER DAWN, NEON CANYON (nuit), TOXIC BLOOM, ABYSSAL REEF, BLOOD MOON, BASALT ORGAN, MIDNIGHT AURORA (nuit), MIRROR VOID (espace), VIOLET HOUR, PRISM MANDALA (kaléidoscope), LIQUID DREAM (iridescent) ; ordre fixe au premier cycle, mélangé ensuite.
 
 ## IA : recette d'entraînement
-`python -m elan.ai.train --gpu 0 --minutes 50 --out assets/ai/x.pt` (imitation du coach puis PPO, curriculum de flux), puis affinages `--resume x.pt --crash 3 --noise 0.08 --minutes 20`. Comparer avec `python -m elan.ai.bench x.pt` (secteurs franchis, game overs, impacts/min) sur au moins 24 vols avant de copier vers `assets/ai/pilot.pt`. Toute règle ajoutée dans pilot.py doit être reproduite dans sim.py (et route.py ↔ course.py, Shield ↔ BatchShield) ; exception : la finale n'est pas simulée (croisière plafonnée à `SERENE`, balade le long des couloirs fantômes `game.course()`, portail après délai `game.homing()`). Le rail de tunnel (rail.py) n'est pas reproduit dans sim.py : le tunnel simulé reste libre, donc plus dur que le vrai.
+`python -m elan.ai.train --gpu 0 --minutes 50 --out assets/ai/x.pt` (imitation du coach puis PPO, curriculum de flux), puis affinages `--resume x.pt --crash 3 --noise 0.08 --minutes 20`. Comparer avec `python -m elan.ai.bench x.pt` (secteurs franchis, game overs, impacts/min) sur au moins 24 vols avant de copier vers `assets/ai/pilot.pt`. Toute règle ajoutée dans pilot.py doit être reproduite dans sim.py (et route.py ↔ course.py, Shield ↔ BatchShield) ; exception : la finale n'est pas simulée (balade sans plafond de vitesse le long des couloirs fantômes `game.course()`, portail après délai `game.homing()`). Le rail de tunnel (rail.py) n'est pas reproduit dans sim.py : le tunnel simulé reste libre, donc plus dur que le vrai.
 
 ## Tests manuels utiles
 `python main.py --windowed --autoplay --frames 600 --perf --shots D:/tmp/elan/shots` (pilote automatique, captures).
@@ -110,7 +113,11 @@ Biomes : EMBER DUSK, GLACIER DAWN, NEON CANYON (nuit), TOXIC BLOOM, ABYSSAL REEF
 `python main.py --windowed --developper` : F1 légende · F4 flux à zéro · F5 flux plein · F6 ouvrir la porte · F7 tunnel warp · F8 tunnel hyper · F9 fin du tunnel · F10 trou noir tout de suite (story) · PageDown / PageUp secteur suivant / précédent.
 `python main.py --windowed --mode story --sector 42 --quota 4 --autoplay` (fin d'histoire complète en ~1 min) ; `python main.py --windowed --finale` (monde final seul).
 Sans sortie sonore : variable d'environnement `SDL_AUDIODRIVER=dummy` (le moteur audio tourne, rien ne sort des enceintes).
-Les parties avec `--autoplay`, `--sector`, `--quota`, `--finale`, `--developper` ou F2 ne touchent pas aux records.
+Les parties AUTO-PLAY ou lancées avec `--autoplay`, `--sector`, `--quota`, `--finale`, `--developper` ne touchent ni aux records ni au tableau des scores (F2 reste libre en mode développeur).
+
+## Matériel
+- Deux GPU : rendu sur `--gpu` (0 par défaut), génération des mondes et synthèse audio sur l'autre. Un seul GPU : tout sur le même (`App._devices`), vérifié sur une RTX 4070 seule : ~58 fps en 1280×720 à 50 %, quelques à-coups pendant la génération du monde suivant, pic de ~3,6 Go alloués (~5,4 Go réservés). Sans CUDA : repli CPU qui démarre (~2 min de chargement) mais reste injouable (~1 image/s en 320×180), signalé sur l'écran de chargement ; un GPU NVIDIA est requis en pratique.
+- Sans `assets/` (ignoré par git) : musique synthétisée, autopilote classique à la place du pilote appris, pas d'image de chargement ni d'icône.
 
 ## Fichiers générés (ignorés par git)
-`elan_settings.json`, `screenshots/`, `assets/` (musique générée dont `finale.wav`, stems Demucs, pilotes IA `assets/ai/*.pt`)
+`elan_settings.json`, `elan_scores.json`, `screenshots/`, `assets/` (musique générée dont `finale.wav`, stems Demucs, pilotes IA `assets/ai/*.pt`)

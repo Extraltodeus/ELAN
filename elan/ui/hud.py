@@ -88,6 +88,7 @@ class ScorePanel:
 		self.y = m.px(40)
 		self.caption = kit.label("SCORE", "tiny", theme.PRIMARY_DIM, spacing=4)
 		self.digits = kit.strip("score", theme.PRIMARY, "0123456789,")
+		self.unscored = kit.label("AUTO-PLAY", "mid", theme.PRIMARY_DIM, spacing=5)
 		self.combo = kit.strip("combo", theme.ACCENT, "0123456789×")
 		self.combo_hot = kit.strip("combo", theme.ACCENT_HOT, "0123456789×")
 		self.score_y = self.y + self.caption.h
@@ -114,7 +115,11 @@ class ScorePanel:
 	def draw(self, screen, hs):
 		t = getattr(hs, "time", 0.0)
 		self.caption.draw(screen, self.x, self.y)
-		self.digits.draw(screen, fmt_int(getattr(hs, "score", 0)), self.x, self.score_y)
+		score = getattr(hs, "score", 0)
+		if score is None:
+			self.unscored.draw(screen, self.x, self.score_y + (self.digits.h - self.unscored.h) // 2)
+		else:
+			self.digits.draw(screen, fmt_int(score), self.x, self.score_y)
 		self.draw_clock(screen, hs)
 		combo = int(getattr(hs, "combo", 1) or 1)
 		if combo > self.last_combo:

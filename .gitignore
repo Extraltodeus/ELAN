@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 elan_settings.json
+elan_scores.json
 elan_error.log
 screenshots/
 assets/

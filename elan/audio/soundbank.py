@@ -270,16 +270,16 @@ class OneShotFactory:
 
 	def make_flux_low(self):
 		s = self.s
-		n = s.samples(0.75)
+		n = s.samples(0.6)
 		t = s.time(n)
 		x = s.zeros(n)
-		for start, f in ((0.0, 196.0), (0.2, 164.8)):
+		for start, level, high, low, tau in ((0.0, 1.0, 170.0, 74.0, 0.085), (0.18, 0.7, 205.0, 92.0, 0.06)):
 			d = (t - start).clamp_min(0.0)
-			env = s.ramp(t - start, 0.0, 0.03) * (1.0 - s.ramp(t - start, 0.12, 0.14))
-			voice = s.sin(torch.remainder(f * d, 1.0)) + 0.5 * s.sin(torch.remainder(f * 0.5 * d, 1.0)) + 0.12 * s.sin(torch.remainder(f * 2.0 * d, 1.0))
-			x = x + voice * env
-		x = s.filter(x, Synth.lowpass(900.0, 1))
-		return s.space(x, s.reverb_ir(0.6, 0.5, 3000.0), 0.2, False)
+			x = x + level * self.chirp(t, start, high, low, 0.035) * s.ramp(t, start, 0.006) * torch.exp(-d / tau)
+		thud = torch.tanh(x * 2.6)
+		knock = self.noise(n, Synth.bandpass(160.0, 620.0, 2), 1)[0] * (s.decay(t, 0.0, 0.03) + 0.7 * s.decay(t, 0.18, 0.024)) * 0.3
+		x = s.filter(thud + knock, Synth.lowpass(900.0, 2))
+		return s.space(x, s.reverb_ir(0.4, 0.3, 1500.0), 0.12, False)
 
 	def make_flux_dry(self):
 		s = self.s

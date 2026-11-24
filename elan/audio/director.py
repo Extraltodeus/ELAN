@@ -26,7 +26,8 @@ FINALE_CHANNEL = len(LOOPS) + 7
 CREDITS_CHANNEL = len(LOOPS) + 8
 ORB_VOICES = 6
 ORB_GAP = 0.03
-FLUX_PERIOD = 1.2
+FLUX_PERIOD = (1.15, 0.66)
+FLUX_VOLUME = (0.6, 0.9)
 SQRT2 = math.sqrt(2.0)
 
 
@@ -275,8 +276,9 @@ class AudioDirector:
 		self.flux_timer -= dt
 		if self.flux_timer > 0.0:
 			return
-		self.flux_timer = FLUX_PERIOD
-		self.play('flux_low', 0.6)
+		urgency = clamp((getattr(mix, 'danger', 0.0) - 0.5) * 2.0)
+		self.flux_timer = FLUX_PERIOD[0] + (FLUX_PERIOD[1] - FLUX_PERIOD[0]) * urgency
+		self.play('flux_low', FLUX_VOLUME[0] + (FLUX_VOLUME[1] - FLUX_VOLUME[0]) * urgency)
 
 	def play(self, name, volume=1.0, pan=0.0, pool=None):
 		if not self.enabled or self.muted:

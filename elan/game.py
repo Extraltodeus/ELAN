@@ -91,6 +91,9 @@ class Summary:
 		self.completed = False
 		self.best_time = 0.0
 		self.new_time = False
+		self.scored = True
+		self.place = 0
+		self.board = []
 
 
 class Mix:
@@ -203,6 +206,10 @@ class Game:
 		self.sealed = None
 		self.finale_time = 0.0
 		self.horizon = 0.0
+		self.scoring = True
+
+	def gain(self, points):
+		return '  +%d' % points if self.scoring else ''
 
 	def say(self, text, kind='info', ttl=2.6):
 		if self.attract:
@@ -233,8 +240,9 @@ class Game:
 	def bonus(self):
 		return RulesCfg.TIER_BONUS[self.tier]
 
-	def start_run(self, sector=0, mode=None):
+	def start_run(self, sector=0, mode=None, scoring=True):
 		self.mode = mode or MODES[0]
+		self.scoring = bool(scoring)
 		self.finale = False
 		self.plunge = False
 		self.sealed = None
@@ -430,7 +438,10 @@ class Game:
 		self.drifting = controls.drift
 		if not self.over and self.sealed is None:
 			self.duration += dt
-		self.flow = max(min(self.flow + RulesCfg.FLOW_GRAZE * kite.graze * dt, 1.0) - RulesCfg.FLOW_DECAY * dt, 0.0)
+		if self.finale:
+			self.flow = min(self.flow + StoryCfg.FINALE_FLOW * dt, 1.0)
+		else:
+			self.flow = max(min(self.flow + RulesCfg.FLOW_GRAZE * kite.graze * dt, 1.0) - RulesCfg.FLOW_DECAY * dt, 0.0)
 		kite.slip = self.flow
 		self._tether(controls)
 		self._rush(dt, controls)
@@ -457,6 +468,8 @@ class Game:
 		self._breathe(dt)
 		if self.sealed is not None:
 			self.score = self.sealed[0]
+		if not self.scoring:
+			self.score = 0.0
 		for message in self.messages:
 			message.age += dt
 		self.messages = [m for m in self.messages if m.age < m.ttl]
@@ -524,7 +537,7 @@ class Game:
 		self.score += points
 		self.flux += RulesCfg.FLUX_SLING
 		self.flux_gain = 1.0
-		self.cheer('SLINGSHOT  +%d' % points, 'good', 2.0)
+		self.cheer('SLINGSHOT' + self.gain(points), 'good', 2.0)
 		self.audio.play('ribbon', 0.5)
 
 	def _burst(self, pos, vel, color, count, spread, speed, life):
@@ -556,7 +569,7 @@ class Game:
 				self.shake = max(self.shake, 0.4)
 				self.audio.play('skim_hit', min(0.45 + amount / 200.0, 1.0))
 				self._burst((kite.pos[0], 0.4, kite.pos[2]), (kite.vel[0] * 0.6, 9.0, kite.vel[2] * 0.6), (0.6, 0.8, 1.0), 120, 1.2, 9.0, 0.8)
-				self.cheer('SKIP x%d  +%d' % (self.skips, points), 'good', 1.6)
+				self.cheer('SKIP x%d' % self.skips + self.gain(points), 'good', 1.6)
 			elif name == 'dive':
 				self.shake = max(self.shake, 0.4)
 				self.flash = max(self.flash, 0.06)
@@ -578,7 +591,7 @@ class Game:
 				if amount > 0.3:
 					self.audio.play('start', 0.35 + 0.45 * amount)
 				self._burst((kite.pos[0], 0.5, kite.pos[2]), (kite.vel[0] * 0.5, max(kite.vel[1], 0.0) * 0.6 + 8.0, kite.vel[2] * 0.5), (0.7, 0.9, 1.0), 260 + int(340 * amount), 1.4 + amount, 12.0 + 10.0 * amount, 1.0 + 0.4 * amount)
-				self.cheer(('SURGE BREACH  +%d' if full else 'BREACH  +%d') % points, 'big' if full else 'good', 2.2 if full else 1.8)
+				self.cheer(('SURGE BREACH' if full else 'BREACH') + self.gain(points), 'big' if full else 'good', 2.2 if full else 1.8)
 			elif name == 'scrape':
 				self.shake = max(self.shake, 0.35)
 				self.damage = max(self.damage, 0.3)
@@ -668,7 +681,7 @@ class Game:
 		self.combo_time = rules.CHAIN_TIME
 		self.scene.set_beacons(ribbon, 0.0)
 		self.audio.play_pickup('ribbon', 0.9)
-		self.say('RIBBON COMPLETE  +%d' % points, 'good', 2.4)
+		self.say('RIBBON COMPLETE' + self.gain(points), 'good', 2.4)
 
 	def _motes(self, dt):
 		if self.finale:
@@ -788,7 +801,7 @@ class Game:
 			color = self.world.palette['gate']
 			self._burst(tuple(kite.pos), (kite.vel[0] * 0.8, kite.vel[1] * 0.8, kite.vel[2] * 0.8), (color[0], color[1], color[2]), 90, 1.5, 16.0, 0.6)
 			self.audio.play('start', 0.55)
-			self.say('RING  +%d' % points, 'good', 1.5)
+			self.say('RING' + self.gain(points), 'good', 1.5)
 
 	def _gate(self):
 		if self.phase != 'sector' or not self.gate_open or self.warp_requested or self.over:
@@ -894,6 +907,7 @@ class Game:
 		out.levels = self.mode.LEVELS
 		out.timed = self.mode.TIMED
 		out.completed = self.sealed is not None
+		out.scored = self.scoring
 		if out.levels:
 			out.sector = min(out.sector, out.levels)
 		if self.career is not None:
@@ -996,7 +1010,7 @@ class Game:
 		hs.flux = self.flux
 		hs.danger = min(max((0.25 - self.flux) / 0.2, 0.0), 1.0)
 		hs.flux_gain = self.flux_gain
-		hs.score = int(self.score)
+		hs.score = int(self.score) if self.scoring else None
 		hs.combo = self.combo
 		hs.combo_time = min(max(self.combo_time / RulesCfg.COMBO_TIME, 0.0), 1.0)
 		hs.sector = self.sector + 1

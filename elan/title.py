@@ -8,17 +8,16 @@ class TitleView:
 		self.blurb = ''
 		self.records = []
 		self.tail = None
-		self.link = ''
-		self.link_focus = False
-		self.link_row = 0
+		self.links = []
 
 
 class TitleMenu:
 	PILOTS = ('FLY', 'AUTO-PLAY')
+	LINKS = (('OPTIONS', 'options'), ('SCORES', 'scores'), ('CREDITS', 'credits'))
 	MODE_ROW = 0
 	PILOT_ROW = 1
-	CREDITS_ROW = 2
-	ROWS = 3
+	LINK_ROW = 2
+	ROWS = LINK_ROW + len(LINKS)
 
 	def __init__(self, settings, modes, mode, autoplay):
 		self.settings = settings
@@ -36,13 +35,16 @@ class TitleMenu:
 	def autoplay(self):
 		return self.pilot == 1
 
+	def _link(self, row):
+		return self.LINKS[row - self.LINK_ROW][1] if row >= self.LINK_ROW else None
+
 	def _count(self, row):
-		if row == self.CREDITS_ROW:
+		if row >= self.LINK_ROW:
 			return 1
 		return len(self.modes) if row == self.MODE_ROW else len(self.PILOTS)
 
 	def _value(self, row):
-		if row == self.CREDITS_ROW:
+		if row >= self.LINK_ROW:
 			return 0
 		return self.mode if row == self.MODE_ROW else self.pilot
 
@@ -108,8 +110,8 @@ class TitleMenu:
 			self._pick(*clicked)
 			if clicked[0] == self.MODE_ROW:
 				return None
-			return 'credits' if clicked[0] == self.CREDITS_ROW else 'start'
-		return 'credits' if self.row == self.CREDITS_ROW else 'start'
+			return self._link(clicked[0]) or 'start'
+		return self._link(self.row) or 'start'
 
 	def view(self, career, clock):
 		mode = self.current()
@@ -118,9 +120,7 @@ class TitleMenu:
 		out.rows = [('MODE', tuple(m.NAME for m in self.modes), self.mode), ('PILOT', self.PILOTS, self.pilot)]
 		out.focus = self.row
 		out.blurb = mode.BLURB
-		out.link = 'CREDITS'
-		out.link_focus = self.row == self.CREDITS_ROW
-		out.link_row = self.CREDITS_ROW
+		out.links = [(label, self.LINK_ROW + k, self.row == self.LINK_ROW + k) for k, (label, _) in enumerate(self.LINKS)]
 		best = int(settings.get(mode.SCORE_KEY))
 		if best:
 			out.records.append(('BEST', '{:,}'.format(best)))

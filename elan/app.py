@@ -15,6 +15,7 @@ from elan.autopilot import Autopilot
 from elan.devtools import DevTools
 from elan.game import Game
 from elan.modes import MODES, mode_of
+from elan.scores import ScoreBoard
 from elan.title import TitleMenu
 from elan.credits import CreditsRoll
 from elan.render import Renderer
@@ -25,13 +26,18 @@ from elan.ui.hud import fmt_clock
 
 
 class App:
+	MENUS = ('title', 'credits', 'options', 'scores')
+
 	def __init__(self, options):
 		torch.set_grad_enabled(False)
 		self.options = options
 		self.root = options.root
 		self.settings = Settings(self.root)
 		self.career = Career(self.settings)
+		self.board = ScoreBoard(self.root, self.settings)
 		self.assisted = False
+		self.piloted = bool(options.autoplay)
+		self.banked = False
 		self.render_device, self.bake_device = self._devices(options)
 		fullscreen = self.settings.get('fullscreen') and not options.windowed
 		self.display = Display(fullscreen, options.window, options.vsync)
@@ -114,6 +120,8 @@ class App:
 
 	def _loading(self, progress, label):
 		self._pump()
+		if self.render_device.type != 'cuda':
+			label = '%s  -  no CUDA GPU found, the CPU fallback is very slow' % label
 		self.screens.draw_loading(self.display.surface, progress, label)
 		self.display.flip()
 
@@ -191,6 +199,7 @@ class App:
 			self.baker.trim()
 
 	def _begin_run(self):
+		self._bank()
 		game = self.game
 		mode = self.mode
 		kind, first = self._opening(mode)
@@ -198,11 +207,12 @@ class App:
 		if self.pilot is not None:
 			self.pilot.world = None
 		final = kind != 'sector'
-		self.assisted = bool(self.options.autoplay) or first > 0 or self.options.quota > 0 or self.dev.enabled or final
+		self.assisted = self.piloted or bool(self.options.autoplay) or first > 0 or self.options.quota > 0 or self.dev.enabled or final
 		self.crowned = None
+		self.banked = False
 		game.career = None if self.assisted else self.career
 		self.career.begin(mode)
-		game.start_run(first, mode)
+		game.start_run(first, mode, not self.piloted)
 		if self.world.sector != first or self.world.kind != 'sector' or bool(self.world.palette.get('final')) != final:
 			self.seed = random.randrange(1, 1000000)
 			self.baker.forget(self.seed)
@@ -254,6 +264,7 @@ class App:
 		game.kite.release()
 		game.sealed = None
 		self.crowned = None
+		self.banked = False
 		game.sector = sector
 		self.world = world
 		self.renderer.set_world(world)
@@ -344,9 +355,7 @@ class App:
 
 	def _to_title(self):
 		game = self.game
-		key = game.mode.SCORE_KEY
-		if not game.attract and not self.assisted and int(game.score) > int(self.settings.get(key)):
-			self.settings.set(key, int(game.score))
+		self._bank()
 		self.settings.save()
 		game.kite.release()
 		game.messages = []
@@ -363,7 +372,7 @@ class App:
 			self.audio.play('ui_move' if sound == 'move' else 'ui_select', 0.5)
 		if action == 'resume':
 			self._apply_settings()
-			self._enter('play')
+			self._enter('title' if self.state == 'options' else 'play')
 		elif action == 'restart':
 			self._apply_settings()
 			self._begin_run()
@@ -377,16 +386,39 @@ class App:
 		elif action == 'changed':
 			self._apply_settings()
 
+	def _live(self):
+		return self.game is not None and not self.game.attract and self.state in ('play', 'pause')
+
+	def _bank(self):
+		if self._live() and not self.banked:
+			self._record()
+
+	def _boards(self):
+		return [(mode.NAME, mode.UNIT, mode.TIMED, self.board.top(mode.KEY)) for mode in MODES]
+
+	def _toggle_pilot(self):
+		game = self.game
+		if not self.piloted and not self.dev.enabled:
+			game.say('AI PILOT LOCKED  -  PICK AUTO-PLAY ON THE MAIN MENU', 'info', 2.4)
+			return
+		self.options.autoplay = not self.options.autoplay
+		self.assisted = True
+		game.career = None
+		self.input.capture(not self.options.autoplay)
+		game.say('AI PILOT ON' if self.options.autoplay else 'AI PILOT OFF', 'info', 1.8)
+
 	def _record(self):
 		settings = self.settings
 		mode = self.game.mode
 		best = settings.get(mode.SCORE_KEY)
 		summary = self.game.summary(best)
+		self.banked = True
 		if mode.TIME_KEY:
 			summary.best_time = float(settings.get(mode.TIME_KEY))
 		if self.assisted:
 			summary.new_best = False
 			summary.best = int(best)
+			summary.board = self.board.top(mode.KEY)
 			return summary
 		if summary.new_best:
 			settings.set(mode.SCORE_KEY, summary.score)
@@ -396,6 +428,8 @@ class App:
 				settings.set(mode.TIME_KEY, summary.duration)
 			settings.set('story_clears', int(settings.get('story_clears')) + 1)
 		settings.save()
+		summary.place = self.board.add(mode.KEY, summary.score, summary.sector, summary.duration, summary.completed)
+		summary.board = self.board.top(mode.KEY)
 		return summary
 
 	def _finish_run(self):
@@ -424,12 +458,29 @@ class App:
 			if action == 'start':
 				self.mode = self.title.current()
 				self.options.autoplay = self.title.autoplay()
+				self.piloted = self.options.autoplay
 				self._begin_run()
 				return 0.0
-			if action == 'credits':
+			if action in self.MENUS:
 				self.audio.play('ui_select', 0.5)
 				self.credits.open()
-				self._enter('credits')
+				self.pause_menu.open(True)
+				self._enter(action)
+				return 0.0
+			game.update(dt, self._drive(game, dt))
+			self._travel()
+			return dt
+		if self.state == 'options':
+			self._pause_menu(menu, dt)
+			if not self.running:
+				return 0.0
+			game.update(dt, self._drive(game, dt))
+			self._travel()
+			return dt
+		if self.state == 'scores':
+			if (menu.back or menu.confirm) and self.state_time > 0.3:
+				self.audio.play('ui_select', 0.5)
+				self._enter('title')
 				return 0.0
 			game.update(dt, self._drive(game, dt))
 			self._travel()
@@ -453,11 +504,7 @@ class App:
 				self._begin_run()
 				return 0.0
 			if menu.autopilot:
-				self.options.autoplay = not self.options.autoplay
-				self.assisted = True
-				game.career = None
-				self.input.capture(not self.options.autoplay)
-				game.say('AI PILOT ON' if self.options.autoplay else 'AI PILOT OFF', 'info', 1.8)
+				self._toggle_pilot()
 			self.dev.run(self)
 			if not self.running:
 				return 0.0
@@ -474,6 +521,8 @@ class App:
 			done = self.summary is not None and self.summary.completed
 			game.update(dt, self._drive(game, dt) if done else Controls())
 			if menu.back and self.state_time > 0.5:
+				self._to_title()
+			elif menu.confirm and done and self.state_time > 1.0:
 				self._to_title()
 			elif (menu.confirm or menu.restart) and self.state_time > 1.0:
 				self._begin_run()
@@ -496,6 +545,13 @@ class App:
 			return
 		if self.state == 'credits':
 			self.credits.limit = self.screens.draw_credits(surface, self.state_time, self.credits.view())
+			return
+		if self.state == 'scores':
+			self.screens.draw_scores(surface, self.state_time, self._boards(), self.board.limit)
+			return
+		if self.state == 'options':
+			self.pause_menu.fullscreen = self.display.fullscreen
+			self.pause_menu.draw(surface, self.state_time)
 			return
 		state = game.hud_state(self.display.size, self.perf_lines if self.show_perf else None)
 		state.dev = self.dev.lines()
@@ -562,7 +618,7 @@ class App:
 			self.display.flip()
 			flip = time.perf_counter() - now - work
 			self.pacer.wait()
-			mix = self.game.mix(self.state in ('title', 'credits'), self.state == 'pause')
+			mix = self.game.mix(self.state in self.MENUS, self.state == 'pause')
 			mix.credits = 1.0 if self.state == 'credits' else 0.0
 			self.audio.update(dt, mix)
 			self.governor.update(dt, work, gpu_wait)
@@ -576,6 +632,7 @@ class App:
 				self.frame_times.append((work, issue, gpu_wait, flip, dt))
 				if self.frames >= options.frames:
 					self.running = False
+		self._bank()
 		self.shutdown()
 
 	def report(self):

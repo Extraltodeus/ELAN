@@ -5,7 +5,7 @@ import pygame
 
 from elan.gamepad import pad_rows
 from elan.input import binding_name
-from elan.settings import DEFAULT_BINDINGS, DEFAULT_PAD
+from elan.settings import DEFAULT_BINDINGS, DEFAULT_PAD, DEFAULT_PAD_LOOK
 
 from . import theme, shapes
 from .hud import Kit, fmt_clock, fmt_int
@@ -35,7 +35,7 @@ class DefaultBindings:
 		return binding_name(DEFAULT_BINDINGS[action][slot])
 
 	def pad_rows(self):
-		return pad_rows('right', DEFAULT_PAD)
+		return pad_rows(DEFAULT_PAD_LOOK, DEFAULT_PAD)
 
 
 def slot_labels(provider, action):
@@ -82,9 +82,10 @@ def bindings_footer(provider):
 	return "   ".join("%s %s" % p for p in parts)
 
 
-TITLE_HINT = "UP / DOWN mode, pilot, credits  ·  LEFT / RIGHT to choose  ·  SPACE, ENTER or CLICK to start  ·  AUTO-PLAY lets the AI fly"
-TITLE_HINT_PAD = "UP / DOWN mode, pilot, credits  ·  LEFT / RIGHT to choose  ·  SPACE, CLICK or A to start  ·  AUTO-PLAY lets the AI fly"
+TITLE_HINT = "UP / DOWN to move  ·  LEFT / RIGHT to choose  ·  SPACE, ENTER or CLICK to start  ·  AUTO-PLAY: the AI flies, no score"
+TITLE_HINT_PAD = "UP / DOWN to move  ·  LEFT / RIGHT to choose  ·  SPACE, CLICK or A to start  ·  AUTO-PLAY: the AI flies, no score"
 CREDITS_FOOTER = "ESC or B back  ·  WHEEL or UP / DOWN to scroll"
+SCORES_FOOTER = "ESC, ENTER or B back"
 
 RULES = (
 	"Flux drains. Motes, grazing rock and skimming the sea refill it.",
@@ -95,6 +96,7 @@ RULES = (
 )
 
 PAUSE_FOOTER = "W/S or ↑/↓ select · A/D or ←/→ change · ENTER confirm · ESC resume"
+OPTIONS_FOOTER = "W/S or ↑/↓ select · A/D or ←/→ change · ENTER confirm · ESC back"
 CONTROLS_FOOTER = "↑/↓ select · ←/→ slot · ENTER or A rebind · DEL clear · ESC or B back"
 CAPTURE_FOOTER = "ESC cancel · BACKSPACE / DEL clear the slot"
 
@@ -354,20 +356,23 @@ class TitleScreen(BaseScreen):
 			lab.draw(screen, x, y + height // 2, "midleft", alpha * fade)
 			x += lab.w + after
 
-	def draw_link(self, screen, t, view, fade):
-		if not view.link:
-			return []
+	def draw_links(self, screen, t, view, fade):
 		m = self.m
-		focused = view.link_focus
-		label = self.lab(view.link, "small", theme.WHITE if focused else theme.PRIMARY_DIM, spacing=6)
-		x = m.w - m.px(46) - label.w
-		y = m.h - m.px(34) - label.h
 		pulse = 0.8 + 0.2 * math.sin(t * 3.4)
-		label.draw(screen, x, y, "topleft", 255 * fade * (pulse if focused else 0.75))
-		if focused:
-			self.hline(screen, x + label.w // 2, y + label.h + m.px(3), label.w, theme.ACCENT, 240 * fade)
-		pad = m.px(14)
-		return [(pygame.Rect(x - pad, y - pad, label.w + 2 * pad, label.h + 2 * pad), view.link_row, 0)]
+		pad = m.px(10)
+		gap = m.px(22)
+		hits = []
+		y = m.h - m.px(34)
+		for text, row, focused in reversed(view.links):
+			label = self.lab(text, "body", theme.WHITE if focused else theme.PRIMARY_DIM, spacing=6)
+			x = m.w - m.px(46) - label.w
+			y -= label.h
+			label.draw(screen, x, y, "topleft", 255 * fade * (pulse if focused else 0.8))
+			if focused:
+				self.hline(screen, x + label.w // 2, y + label.h + m.px(3), label.w, theme.ACCENT, 240 * fade)
+			hits.append((pygame.Rect(x - pad, y - pad, label.w + 2 * pad, label.h + 2 * pad), row, 0))
+			y -= gap
+		return hits
 
 	def draw(self, screen, t, view, pad_connected):
 		m = self.m
@@ -386,7 +391,7 @@ class TitleScreen(BaseScreen):
 		hint = TITLE_HINT_PAD if pad_connected else TITLE_HINT
 		self.lab(hint, "tiny", theme.PRIMARY_DIM, spacing=3).draw(screen, m.cx, y - m.px(28), "midtop", 220 * f2)
 		self.draw_records(screen, view, y, f2)
-		hits.extend(self.draw_link(screen, t, view, f2))
+		hits.extend(self.draw_links(screen, t, view, f2))
 		f3 = fade_at(t, 1.0)
 		self.sheet.refresh()
 		rh = self.lab(RULES[0], "small", theme.PRIMARY, 1).h
@@ -566,10 +571,117 @@ class ControlsScreen(PauseScreen):
 		return hits
 
 
+class ScoreTable:
+	WIDTHS = (44, 200, 110, 130, 150)
+	HEADS = ("#", "SCORE", "", "TIME", "DATE")
+	CENTERED = 2
+
+	def __init__(self, screen):
+		self.s = screen
+
+	def columns(self, dated):
+		m = self.s.m
+		return [m.px(w) for w in (self.WIDTHS if dated else self.WIDTHS[:-1])]
+
+	def width(self, dated):
+		return sum(self.columns(dated))
+
+	def row_height(self, compact):
+		return self.s.m.px(28 if compact else 36)
+
+	def head_height(self):
+		return self.s.lab("#", "tiny", theme.PRIMARY_DIM, spacing=3).h + self.s.m.px(10)
+
+	def height(self, count, compact):
+		return self.head_height() + self.row_height(compact) * max(count, 1)
+
+	def cells(self, place, row, timed):
+		stage = "CLEAR" if row.get("cleared") else (str(row.get("stage")) if row.get("stage") else NONE_LABEL)
+		seconds = float(row.get("time") or 0.0)
+		clock = NONE_LABEL if seconds <= 0.0 else (fmt_clock(seconds, 1) if timed else fmt_time(seconds))
+		return (str(place), fmt_int(row.get("score", 0)), stage, clock, row.get("date") or NONE_LABEL)
+
+	def put(self, screen, label, k, left, width, cy, alpha):
+		if k == self.CENTERED:
+			label.draw(screen, left + width // 2, cy, "center", alpha)
+			return
+		label.draw(screen, left + width - self.s.m.px(8), cy, "midright", alpha)
+
+	def draw(self, screen, x, y, entries, unit, timed, alpha, mark=0, dated=True, compact=False):
+		s = self.s
+		m = s.m
+		widths = self.columns(dated)
+		total = sum(widths)
+		head_h = self.head_height()
+		row_h = self.row_height(compact)
+		size = "label" if compact else "body"
+		left = x
+		for k, w in enumerate(widths):
+			head = s.lab(self.HEADS[k] or unit, "tiny", theme.PRIMARY_DIM, spacing=3)
+			self.put(screen, head, k, left, w, y + head.h // 2, alpha * 0.9)
+			left += w
+		s.hline(screen, x + total // 2, y + head_h - m.px(5), total, theme.PRIMARY_DIM, alpha * 0.55)
+		y += head_h
+		if not entries:
+			s.lab("NO RUNS YET", "label", theme.PRIMARY_DIM, spacing=4).draw(screen, x + total // 2, y + row_h // 2, "center", alpha * 0.9)
+			return y + row_h
+		for place, row in entries:
+			cy = y + row_h // 2
+			marked = place == mark
+			if marked:
+				strip = s.highlight(total, row_h - m.px(4))
+				strip.blit(screen, (x, cy - strip.h // 2), alpha)
+				screen.fill(theme.ACCENT, (x, cy - strip.h // 2, max(2, m.px(3)), strip.h))
+			left = x
+			for k, (w, text) in enumerate(zip(widths, self.cells(place, row, timed))):
+				tone = theme.PRIMARY_DIM if k in (0, 4) else theme.PRIMARY
+				if marked:
+					tone = theme.ACCENT_HOT if k in (0, 4) else theme.WHITE
+				self.put(screen, s.lab(text, "label" if k == 4 else size, tone, 1), k, left, w, cy, alpha)
+				left += w
+			y += row_h
+		return y
+
+
+class ScoresScreen(BaseScreen):
+	GAP = 90
+
+	def __init__(self, kit):
+		BaseScreen.__init__(self, kit)
+		self.shade = Shade([(0.0, 0.5), (0.2, 0.64), (0.5, 0.72), (0.8, 0.64), (1.0, 0.5)], [(0.0, 0.3), (0.3, 0.0), (0.7, 0.0), (1.0, 0.3)])
+		self.table = ScoreTable(self)
+
+	def draw(self, screen, t, boards, kept):
+		m = self.m
+		f = fade_at(t, 0.0, 0.25)
+		a = 255 * f
+		self.shade.draw(screen, f)
+		title = self.lab("SCORES", "huge", theme.PRIMARY, spacing=30, kind="thin")
+		names = [self.lab(name, "mid", theme.WHITE, spacing=8) for name, _, _, _ in boards]
+		width = self.table.width(True)
+		gap = m.px(self.GAP)
+		total = width * len(boards) + gap * (len(boards) - 1)
+		block = title.h + m.px(44) + names[0].h + m.px(16) + self.table.height(kept, False)
+		y = max(m.px(16), (m.h - m.px(60) - block) // 2) + int((1.0 - f) * m.px(16))
+		title.draw(screen, m.cx, y, "midtop", a)
+		self.hline(screen, m.cx, y + title.h + m.px(4), m.px(120), theme.ACCENT, 230 * f)
+		top = y + title.h + m.px(44)
+		x = m.cx - total // 2
+		for label, (_, unit, timed, rows) in zip(names, boards):
+			label.draw(screen, x + width // 2, top, "midtop", a)
+			self.table.draw(screen, x, top + label.h + m.px(16), list(enumerate(rows, 1)), unit, timed, a)
+			x += width + gap
+		self.lab(SCORES_FOOTER, "small", theme.PRIMARY_DIM, 1).draw(screen, m.cx, m.h - m.px(30), "midbottom", 230 * f)
+
+
 class GameOverScreen(BaseScreen):
+	COLUMN = 5
+	GAP = 70
+
 	def __init__(self, kit):
 		BaseScreen.__init__(self, kit)
 		self.shade = Shade([(0.0, 0.5), (0.25, 0.66), (0.5, 0.72), (0.8, 0.66), (1.0, 0.55)], [(0.0, 0.3), (0.3, 0.0), (0.7, 0.0), (1.0, 0.3)])
+		self.table = ScoreTable(self)
 
 	def resize(self):
 		BaseScreen.resize(self)
@@ -592,9 +704,12 @@ class GameOverScreen(BaseScreen):
 		timed = bool(g("timed", False))
 		unit = str(g("unit", "SECTOR") or "SECTOR")
 		levels = int(g("levels", 0) or 0)
+		scored = bool(g("scored", True))
+		board = list(g("board", None) or [])
+		tight = bool(board)
 		self.shade.draw(screen, fade_at(t, 0.0, 0.5) * (0.75 if done else 1.0))
 		f0 = fade_at(t, 0.0, 0.5)
-		y = int(m.h * (0.11 if done else 0.2))
+		y = int(m.h * ((0.05 if tight else 0.11) if done else (0.1 if tight else 0.2)))
 		tone = theme.WHITE if done else theme.DANGER
 		head = fit_label(self, "WELCOME TO THE SINGULARITY" if done else "FLUX DEPLETED", ("big", "mid"), tone, m.w - m.px(60), 12)
 		head.draw(screen, m.cx, y + int((1.0 - f0) * m.px(20)), "midtop", 255 * f0)
@@ -604,14 +719,17 @@ class GameOverScreen(BaseScreen):
 			sub = self.lab("STORY COMPLETE  -  %d LEVELS BEHIND YOU" % levels, "small", theme.ACCENT_HOT, spacing=6)
 			sub.draw(screen, m.cx, y + m.px(10), "midtop", 240 * f0)
 			y += sub.h + m.px(8)
-		y += m.px(34)
+		y += m.px(22 if tight else 34)
 		f1 = fade_at(t, 0.3)
-		cap = self.lab("FINAL SCORE", "small", theme.PRIMARY_DIM, spacing=5)
+		cap = self.lab("FINAL SCORE" if scored else "AUTO-PLAY RUN", "small", theme.PRIMARY_DIM, spacing=5)
 		cap.draw(screen, m.cx, y, "midtop", 230 * f1)
 		y += cap.h
 		score = int(g("score", 0) or 0)
 		shown = int(score * ease((t - 0.3) / 1.1))
-		self.score_digits.draw(screen, fmt_int(shown), m.cx, y, "midtop", 255 * f1)
+		if scored:
+			self.score_digits.draw(screen, fmt_int(shown), m.cx, y, "midtop", 255 * f1)
+		else:
+			self.lab("NO SCORE", "big", theme.PRIMARY_DIM, spacing=12).draw(screen, m.cx, y + self.score_digits.h // 2, "center", 255 * f1)
 		y += self.score_digits.h + m.px(10)
 		f2 = fade_at(t, 1.3, 0.35)
 		if g("new_best", False):
@@ -622,12 +740,14 @@ class GameOverScreen(BaseScreen):
 			fr.draw(screen, m.cx, y + fh // 2, "center", 255 * f2 * pulse)
 			nb.draw(screen, m.cx, y + fh // 2, "center", 255 * f2)
 			y += fh + m.px(12)
+		best = int(g("best", 0) or 0)
 		bc = self.lab("BEST", "small", theme.PRIMARY_DIM, spacing=5)
-		bv = self.lab(fmt_int(g("best", 0) or 0), "body", theme.ACCENT_HOT, spacing=1)
+		bv = self.lab(fmt_int(best), "body", theme.ACCENT_HOT, spacing=1)
 		gap = m.px(14)
 		bx = m.cx - (bc.w + gap + bv.w) // 2
-		bc.draw(screen, bx, y + bv.h // 2, "midleft", 230 * f1)
-		bv.draw(screen, bx + bc.w + gap, y + bv.h // 2, "midleft", 255 * f1)
+		if scored or best > 0:
+			bc.draw(screen, bx, y + bv.h // 2, "midleft", 230 * f1)
+			bv.draw(screen, bx + bc.w + gap, y + bv.h // 2, "midleft", 255 * f1)
 		y += bv.h + m.px(14)
 		rank = g("rank", "")
 		if rank and not done:
@@ -636,7 +756,7 @@ class GameOverScreen(BaseScreen):
 			line.draw(screen, m.cx, y, "midtop", 240 * f2)
 		if done and timed:
 			y = self.draw_time(screen, t, summary, y + m.px(6), f2)
-		y += m.px(56)
+		y += m.px(40 if tight else 56)
 		duration = g("duration", 0) or 0
 		stats = [
 			(unit if not done else unit + "S", str(int(g("sector", 1) or 0)) + (" / %d" % levels if levels else "")),
@@ -659,11 +779,38 @@ class GameOverScreen(BaseScreen):
 			c.draw(screen, mx, y + v.h + m.px(4) + oy, "midtop", 230 * fi)
 			if i:
 				screen.fill(theme.PRIMARY_DIM, (x + i * cw, y + m.px(6), 1, sep_h - m.px(8)))
-		y += sep_h + m.px(90)
+		y += sep_h
+		if tight:
+			y = self.draw_board(screen, summary, board, y + m.px(34), fade_at(t, 1.0)) + m.px(30)
+		else:
+			y += m.px(90)
 		f3 = fade_at(t, 1.6)
 		pulse = 0.8 + 0.2 * math.sin(t * 3.4)
-		self.lab("PRESS SPACE TO FLY AGAIN", "mid", theme.WHITE, spacing=6).draw(screen, m.cx, y, "midtop", 255 * f3 * pulse)
+		prompt = self.lab("PRESS SPACE FOR THE MAIN MENU" if done else "PRESS SPACE TO FLY AGAIN", "mid", theme.WHITE, spacing=6)
+		prompt.draw(screen, m.cx, y, "midtop", 255 * f3 * pulse)
+		if not done:
+			self.lab("ESC  ·  MAIN MENU", "tiny", theme.PRIMARY_DIM, spacing=4).draw(screen, m.cx, y + prompt.h + m.px(6), "midtop", 220 * f3)
 
+	def draw_board(self, screen, summary, board, y, fade):
+		m = self.m
+		g = lambda n, d=0: getattr(summary, n, d)
+		unit = str(g("unit", "SECTOR") or "SECTOR")
+		timed = bool(g("timed", False))
+		mark = int(g("place", 0) or 0)
+		cap = self.lab("BEST RUNS  -  %s" % str(g("mode", "") or "").upper(), "small", theme.PRIMARY_DIM, spacing=5)
+		cap.draw(screen, m.cx, y, "midtop", 230 * fade)
+		y += cap.h + m.px(8)
+		entries = list(enumerate(board, 1))
+		first = entries[:self.COLUMN]
+		second = entries[self.COLUMN:self.COLUMN * 2]
+		width = self.table.width(False)
+		a = 255 * fade
+		if not second:
+			return self.table.draw(screen, m.cx - width // 2, y, first, unit, timed, a, mark, False, True)
+		gap = m.px(self.GAP)
+		bottom = self.table.draw(screen, m.cx - gap // 2 - width, y, first, unit, timed, a, mark, False, True)
+		self.table.draw(screen, m.cx + gap // 2, y, second, unit, timed, a, mark, False, True)
+		return bottom
 
 	def draw_time(self, screen, t, summary, y, fade):
 		m = self.m
@@ -772,6 +919,7 @@ class Screens:
 		self.controls = ControlsScreen(self.kit)
 		self.gameover = GameOverScreen(self.kit)
 		self.credits = CreditsScreen(self.kit)
+		self.scores = ScoresScreen(self.kit)
 		self.provider = DefaultBindings()
 		self.size = None
 		self.resize(size)
@@ -789,7 +937,7 @@ class Screens:
 			return
 		self.size = size
 		self.kit.resize(size)
-		for s in (self.loading, self.title, self.pause, self.controls, self.gameover, self.credits):
+		for s in (self.loading, self.title, self.pause, self.controls, self.gameover, self.credits, self.scores):
 			s.resize()
 
 	def check(self, screen):
@@ -825,3 +973,7 @@ class Screens:
 	def draw_credits(self, screen, t, view):
 		self.check(screen)
 		return self.credits.draw(screen, t, view)
+
+	def draw_scores(self, screen, t, boards, kept):
+		self.check(screen)
+		self.scores.draw(screen, t, boards, kept)

@@ -94,6 +94,7 @@ class StoryCfg:
 	REPLAY_DELAY = 25.0
 	FALL_CURVE = 1.6
 	FALL_LEAD = 420.0
+	FINALE_FLOW = 0.25
 
 
 class RenderCfg:
@@ -272,6 +273,8 @@ class RulesCfg:
 class AppCfg:
 	TITLE = 'ÉLAN'
 	SETTINGS_FILE = 'elan_settings.json'
+	SCORES_FILE = 'elan_scores.json'
+	SCORES_KEPT = 10
 	MAX_DT = 1.0 / 20.0
 	IDLE_FPS = 240
 	BAKE_THROTTLE = 0.0015
