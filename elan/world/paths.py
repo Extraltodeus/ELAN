@@ -13,18 +13,22 @@ class PathPlanner:
 		self.sunk_ratio = 0.25
 		self.probes = 8
 		self.shallow = 0.33
+		self.cruise = None
+		self.gate_alt = (70.0, 250.0)
 		self.valid_count = 0
 
 	def plan(self, sampler, noise, style):
 		self.sunk_ratio = style['sunk']
 		self.probes = int(style['corridor'])
 		self.shallow = float(style['shallow'])
+		self.cruise = style['cruise']
+		self.gate_alt = style['gate_alt']
 		ribbons = self._ribbons(sampler, noise)
 		rings_pos, rings_dir = self._rings(ribbons)
 		launch = self._launch(sampler, ribbons)
 		ribbons, rings_pos, rings_dir = self._sink(ribbons, rings_pos, rings_dir)
-		spawn_pos, spawn_dir = launch if launch is not None else self._open_spot(sampler, noise, (110.0, 230.0), 42.0, None, False)
-		gate_pos, gate_dir = self._open_spot(sampler, noise, (70.0, 250.0), 46.0, spawn_pos, True)
+		spawn_pos, spawn_dir = launch if launch is not None else self._open_spot(sampler, noise, self.cruise or (110.0, 230.0), 42.0, None, False)
+		gate_pos, gate_dir = self._open_spot(sampler, noise, self.gate_alt, 46.0, spawn_pos, True)
 		return {
 			'ribbons': ribbons, 'rings_pos': rings_pos, 'rings_dir': rings_dir,
 			'spawn_pos': spawn_pos, 'spawn_dir': spawn_dir, 'gate_pos': gate_pos, 'gate_dir': gate_dir,
@@ -77,16 +81,18 @@ class PathPlanner:
 	def _walk(self, sampler, noise):
 		cfg = WorldCfg
 		count = cfg.RIBBON_CANDIDATES
-		seeds = self._random_points(noise, count * 24, (22.0, cfg.SIZE_Y * 0.8))
+		cruise = self.cruise
+		floor = cruise[0] if cruise else 30.0
+		seeds = self._random_points(noise, count * 24, cruise or (22.0, cfg.SIZE_Y * 0.8))
 		depth = sampler.sample(seeds)
-		good = ((depth > 15.0) & (depth < 34.0)).nonzero().flatten()
+		good = ((depth > 40.0) if cruise else ((depth > 15.0) & (depth < 34.0))).nonzero().flatten()
 		if good.numel() == 0:
 			good = torch.arange(seeds.shape[0], device=self.device)
 		pick = good[torch.arange(count, device=self.device) % good.numel()]
 		shallow = good[seeds[good, 1] < 85.0]
 		third = int(count * self.shallow)
-		cap = torch.full((count,), cfg.SIZE_Y * 0.8, device=self.device)
-		if shallow.numel() > 0:
+		cap = torch.full((count,), cruise[1] if cruise else cfg.SIZE_Y * 0.8, device=self.device)
+		if shallow.numel() > 0 and third > 0:
 			pick[:third] = shallow[torch.arange(third, device=self.device) % shallow.numel()]
 			cap[:third] = 95.0
 		pos = seeds[pick]
@@ -99,12 +105,12 @@ class PathPlanner:
 			track.append(pos)
 			depth = sampler.sample(pos)
 			normal = sampler.gradient(pos)
-			steer = normal * (((18.0 - depth) / 18.0).clamp(-1.0, 1.0) * 0.5).unsqueeze(-1)
+			steer = normal * (((18.0 - depth) / 18.0).clamp(0.0 if cruise else -1.0, 1.0) * 0.5).unsqueeze(-1)
 			for reach, weight in ((30.0, 1.2), (65.0, 0.8)):
 				ahead = pos + heading * reach
 				depth_ahead = sampler.sample(ahead)
 				steer = steer + sampler.gradient(ahead) * (((24.0 - depth_ahead) / 24.0).clamp(0.0, 1.0) * weight).unsqueeze(-1)
-			lift = ((30.0 - pos[:, 1]) / 30.0).clamp_min(0.0) - ((pos[:, 1] - cap) / 40.0).clamp_min(0.0)
+			lift = ((floor - pos[:, 1]) / 30.0).clamp_min(0.0) - ((pos[:, 1] - cap) / 40.0).clamp_min(0.0)
 			steer[:, 1] += lift * 0.8
 			steer = steer + spin
 			spin = spin * 0.9 + noise.normal((count, 3)) * 0.025

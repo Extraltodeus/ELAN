@@ -9,13 +9,16 @@ from elan.world.fieldops import FieldOps
 
 
 class TunnelPath:
-	def __init__(self, seed, hyper):
+	def __init__(self, seed, hyper, plunge=False):
 		cfg = TunnelCfg
 		rng = random.Random(seed * 9973 + 5)
 		calm = cfg.CALM if hyper else 1.0
+		if plunge:
+			calm = cfg.PLUNGE_CALM
 		self.hyper = hyper
+		self.plunge = plunge
 		self.length = cfg.LENGTH
-		self.radius = cfg.RADIUS_HYPER if hyper else cfg.RADIUS
+		self.radius = cfg.RADIUS_HYPER if hyper or plunge else cfg.RADIUS
 		self.sway = [(amp * calm, order, rng.uniform(0.0, math.tau)) for amp, order in cfg.SWAY]
 		self.heave = [(amp * calm, order, rng.uniform(0.0, math.tau)) for amp, order in cfg.HEAVE]
 		self.pulse = [(cfg.PULSE[0], cfg.PULSE[1], rng.uniform(0.0, math.tau))]
@@ -138,7 +141,7 @@ class TunnelBaker:
 		return torch.stack((relief, torch.zeros_like(relief), relief), 0).unsqueeze(0).contiguous()
 
 	def bake(self, world, palette, seed, sector):
-		path = TunnelPath(seed * 131 + sector, palette['hyper'])
+		path = TunnelPath(seed * 131 + sector, palette['hyper'], bool(palette.get('plunge')))
 		relief = palette['style']['relief']
 		dist, coords = self.field(path)
 		ribbons, rings, axes = path.lanes(WorldCfg.RIBBON_STEPS)

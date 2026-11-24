@@ -73,6 +73,10 @@ BASE_STYLE = {
 	'aurora': 0.0,
 	'sky_fold': 0,
 	'sun_disc': 1.0,
+	'cruise': None,
+	'gate_alt': (70.0, 250.0),
+	'cloud_deck': None,
+	'far_fade': 0.0,
 }
 
 BIOMES = {
@@ -314,6 +318,44 @@ TUNNEL = {
 }
 
 
+SINGULARITY = {
+	'name': 'THE SINGULARITY',
+	'sun_az': 30.0, 'sun_el': 10.0,
+	'sun_color': (1.0, 0.74, 0.5), 'sun_power': 4.2,
+	'zenith': (0.07, 0.15, 0.45), 'horizon': (1.0, 0.62, 0.5), 'glow': (1.0, 0.74, 0.46),
+	'fog_density': 0.85,
+	'rock_a': (0.7, 0.72, 0.77), 'rock_b': (0.86, 0.86, 0.9), 'top': (0.93, 0.94, 0.96),
+	'vein': (0.5, 0.9, 1.0), 'vein_power': 1.8,
+	'sea': (0.03, 0.065, 0.11),
+	'amb_sky': (0.36, 0.42, 0.72), 'amb_ground': (0.3, 0.24, 0.24), 'rim': (1.0, 0.84, 0.74),
+	'mote': (1.0, 1.0, 1.0), 'gate': (1.0, 1.0, 1.0), 'dust': (1.0, 0.95, 0.88),
+	'planet_a': (1.0, 0.88, 0.78), 'planet_b': (0.72, 0.66, 0.86), 'ring': (1.0, 0.94, 0.86),
+	'planet_az': -75.0, 'planet_el': 40.0, 'planet_size': 11.0, 'ring_tilt': 18.0,
+	'stars': 0.5, 'nebula': (0.3, 0.25, 0.5), 'cloud': 0.5,
+	'shape': {
+		'layers': (('isles', 6.0), ('citadel', 3.0), ('spires', 4.0)),
+		'isle_wave': 560.0, 'isle_thr': 0.05, 'isle_gain': 26.0, 'isle_top': 9.0,
+		'city_cells': 26, 'city_jitter': 0.55, 'city_core': 1.3, 'city_shore': 0.08, 'city_fill': 0.9,
+		'city_height': (14.0, 96.0), 'city_peak': 1.3, 'city_girth': (5.0, 9.5),
+		'city_taper': 0.8, 'city_tip': 0.4, 'city_flare': 0.5, 'city_foot': 8.0,
+		'city_domes': 0.14, 'dome_scale': 1.9,
+		'spire_cells': 3, 'spire_jitter': 0.6, 'spire_shore': 0.2, 'spire_fill': 0.6,
+		'spire_height': (225.0, 300.0), 'spire_girth': 12.0,
+		'spire_decks': ((0.74, 2.2, 2.6), (0.9, 1.5, 2.2)),
+		'tori': 3, 'tori_alt': (215.0, 280.0), 'tori_major': (60.0, 105.0), 'tori_minor': (5.0, 8.0),
+		'rough': 0.0, 'strata_amp': 0.0, 'warp_amp': 0.0,
+	},
+	'style': {
+		'relief': 0.0, 'moss': 0.0, 'vein_spread': 0.25, 'neon': 2.2, 'neon_color': (0.55, 0.9, 1.0), 'neon_period': 14.0,
+		'iridescence': 0.1, 'iris_flow': 0.1, 'glow': 1.2, 'sunk': 0.0, 'shallow': 0.0, 'corridor': 6,
+		'cruise': (185.0, 275.0), 'gate_alt': (210.0, 265.0), 'far_fade': 170.0,
+		'cloud_deck': {
+			'band': (104.0, 192.0), 'wave': 400.0, 'detail': (26.0, 170.0), 'thr': 0.3, 'gain': 2.6, 'crown': 3.2,
+			'density': 0.045, 'sun': 1.55, 'sky': 1.0, 'wind': (2.6, 1.1),
+		},
+	},
+}
+
 NUMERALS = ('', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX', ' X')
 
 
@@ -368,6 +410,32 @@ class PaletteBook:
 			self._recolor(palette, shift)
 			self._recolor(style, shift)
 			palette['name'] = base['name'] + NUMERALS[min(cycle, len(NUMERALS) - 1)]
+		return palette
+
+	def finale(self, seed):
+		rng = random.Random(seed * 7919 + 4242)
+		palette = dict(SINGULARITY)
+		palette['key'] = 'singularity'
+		palette['final'] = True
+		shape = dict(BASE_SHAPE)
+		shape.update(SINGULARITY['shape'])
+		palette['shape'] = shape
+		style = dict(BASE_STYLE)
+		style.update(SINGULARITY['style'])
+		palette['style'] = style
+		palette['sun_az'] = SINGULARITY['sun_az'] + rng.uniform(-25.0, 25.0)
+		palette['planet_az'] = SINGULARITY['planet_az'] + rng.uniform(-30.0, 30.0)
+		return palette
+
+	def plunge(self, sector, seed):
+		palette = self.tunnel(sector, seed)
+		palette['hyper'] = False
+		palette['plunge'] = True
+		palette['name'] = 'EVENT HORIZON'
+		palette['mote'] = (1.0, 1.0, 1.0)
+		palette['dust'] = (1.0, 1.0, 1.0)
+		palette['flow_to'] = (1.0, 1.0, 1.0)
+		palette['core_to'] = (0.0, 0.0, 0.0)
 		return palette
 
 	def hyper(self, sector):

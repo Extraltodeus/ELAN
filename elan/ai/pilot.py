@@ -17,6 +17,7 @@ class LearnedPilot:
 	ENDURANCE = 14.0
 	APPROACH = (320.0, 0.75, 60.0, 0.25, 0.3, 90.0)
 	CAUTION = (0.35, 8.0, 0.8, 6.0, 0.3, 60.0, 90.0)
+	SERENE = 95.0
 	SHIELD = True
 
 	def __init__(self, path):
@@ -69,7 +70,7 @@ class LearnedPilot:
 		self.field = FieldSampler(world.field)
 		self.route = Route(world)
 		self.tunnel = world.kind == 'tunnel'
-		self.hyper = self.tunnel and bool(world.palette['hyper'])
+		self.hyper = self.tunnel and bool(world.palette['hyper'] or world.palette.get('plunge'))
 		self.rates = [0.0, 0.0]
 
 	def _cap(self, vector, limit):
@@ -87,12 +88,12 @@ class LearnedPilot:
 		r = (math.cos(kite.yaw), 0.0, -math.sin(kite.yaw))
 		u = (f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0])
 		axes = (r, u, f)
-		self.reserve = max(self.RESERVE, self.ENDURANCE * (RulesCfg.FLUX_DRAIN + game.sector * RulesCfg.FLUX_DRAIN_SECTOR))
+		self.reserve = max(self.RESERVE, self.ENDURANCE * game.drain())
 		route.urgent = not self.tunnel and not game.attract and game.flux < self.reserve
-		route.advance(pos, vel, f, game.alive)
+		route.advance(pos, vel, f, game.course())
 		way, valid, left = route.waypoints()
 		ahead = route.upcoming(pos)
-		gate = game.gate_open and not self.tunnel
+		gate = game.homing()
 		self.door = None
 		if gate:
 			door = route.wrap(np.asarray(self.world.gate_pos, dtype=np.float64) - pos)
@@ -102,7 +103,7 @@ class LearnedPilot:
 			ahead = None
 		speed = math.sqrt(float(vel @ vel))
 		height = kite.pos[1]
-		drain = 0.0 if self.tunnel else RulesCfg.FLUX_DRAIN + min(game.sector, self.SECTORS) * RulesCfg.FLUX_DRAIN_SECTOR
+		drain = 0.0 if self.tunnel else min(game.drain(), RulesCfg.FLUX_DRAIN + self.SECTORS * RulesCfg.FLUX_DRAIN_SECTOR)
 		out = [float(vel @ np.asarray(axis)) / 100.0 for axis in axes]
 		out += [
 			speed / 150.0,
@@ -184,6 +185,9 @@ class LearnedPilot:
 		controls.look_y = -self.rates[1] * dt
 		controls.thrust = self.thrust
 		controls.boost = float(action[3]) > 0.0 and (self.hyper or game.flux > self.reserve) and not (game.gate_open and not self.tunnel)
+		if game.finale:
+			controls.boost = False
+			controls.thrust = 0.0 if game.kite.speed > self.SERENE else controls.thrust
 		if not self.tunnel:
 			soon, tight, later, close, idle, brisk, swift = self.CAUTION
 			kite = game.kite

@@ -66,6 +66,11 @@ class MixRules:
 		o[9] = 0.22 * window(intensity, 0.15, 0.3) * duck
 		o[10] = 0.3 * window(intensity, 0.4, 0.55) * duck
 		o[11] = 0.44 * window(intensity, 0.7, 0.85) * duck
+		if g(mix, 'serene', 0.0) > 0.5:
+			o[8] = 0.46 * duck
+			o[9] = 0.05 * duck
+			o[10] = 0.14 * duck
+			o[11] = 0.0
 		return o
 
 

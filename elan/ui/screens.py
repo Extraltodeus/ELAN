@@ -8,7 +8,7 @@ from elan.input import binding_name
 from elan.settings import DEFAULT_BINDINGS, DEFAULT_PAD
 
 from . import theme, shapes
-from .hud import Kit, fmt_int
+from .hud import Kit, fmt_clock, fmt_int
 from .text import Label
 from .theme import clamp01
 
@@ -82,9 +82,8 @@ def bindings_footer(provider):
 	return "   ".join("%s %s" % p for p in parts)
 
 
-TITLE_CHOICES = ("FLY", "AUTO-PLAY")
-TITLE_HINT = "LEFT / RIGHT to choose  ·  SPACE, ENTER or CLICK to start  ·  AUTO-PLAY lets the AI fly"
-TITLE_HINT_PAD = "LEFT / RIGHT to choose  ·  SPACE, CLICK or A to start  ·  AUTO-PLAY lets the AI fly"
+TITLE_HINT = "UP / DOWN mode or pilot  ·  LEFT / RIGHT to choose  ·  SPACE, ENTER or CLICK to start  ·  AUTO-PLAY lets the AI fly"
+TITLE_HINT_PAD = "UP / DOWN mode or pilot  ·  LEFT / RIGHT to choose  ·  SPACE, CLICK or A to start  ·  AUTO-PLAY lets the AI fly"
 
 RULES = (
 	"Flux drains. Motes, grazing rock and skimming the sea refill it.",
@@ -310,12 +309,56 @@ class TitleScreen(BaseScreen):
 		BaseScreen.resize(self)
 		self.sheet.layout()
 
-	def draw(self, screen, t, best_score, pad_connected, choice=0, career=None):
+	def draw_rows(self, screen, t, view, y, fade):
+		m = self.m
+		pulse = 0.8 + 0.2 * math.sin(t * 3.4)
+		spread = m.px(70)
+		pad = m.px(14)
+		hits = []
+		for r, (caption, names, picked) in enumerate(view.rows):
+			focused = r == view.focus
+			labels = [self.lab(name, "mid", theme.WHITE if k == picked else theme.PRIMARY_DIM, spacing=6) for k, name in enumerate(names)]
+			x = m.cx - (sum(l.w for l in labels) + spread * (len(labels) - 1)) // 2
+			cap = self.lab(caption, "tiny", theme.ACCENT if focused else theme.PRIMARY_DIM, spacing=5)
+			cap.draw(screen, x - m.px(36), y + labels[0].h // 2, "midright", 230 * fade)
+			for k, label in enumerate(labels):
+				chosen = k == picked
+				glow = (pulse if focused else 0.9) if chosen else 0.62
+				label.draw(screen, x, y, "topleft", 255 * fade * glow)
+				if chosen:
+					self.hline(screen, x + label.w // 2, y + label.h + m.px(4), label.w, theme.ACCENT if focused else theme.PRIMARY_DIM, 240 * fade)
+				hits.append((pygame.Rect(x - pad, y - pad, label.w + 2 * pad, label.h + 2 * pad), r, k))
+				x += label.w + spread
+			y += labels[0].h + m.px(10)
+			if r == 0 and view.blurb:
+				self.lab(view.blurb, "tiny", theme.PRIMARY, spacing=3).draw(screen, m.cx, y, "midtop", 220 * fade)
+			y += m.px(32)
+		return hits, y
+
+	def draw_records(self, screen, view, y, fade):
+		m = self.m
+		gap = m.px(14)
+		parts = []
+		for caption, value in view.records:
+			parts.append((self.lab(caption, "small", theme.PRIMARY_DIM, spacing=5), 230, gap))
+			parts.append((self.lab(value, "body", theme.ACCENT, spacing=1), 255, gap * 3))
+		if view.tail:
+			parts.append((self.lab(view.tail, "small", theme.PRIMARY_DIM, spacing=4), 230, 0))
+		if not parts:
+			return
+		width = sum(lab.w + after for lab, _, after in parts) - parts[-1][2]
+		height = max(lab.h for lab, _, _ in parts)
+		x = m.cx - width // 2
+		for lab, alpha, after in parts:
+			lab.draw(screen, x, y + height // 2, "midleft", alpha * fade)
+			x += lab.w + after
+
+	def draw(self, screen, t, view, pad_connected):
 		m = self.m
 		self.shade.draw(screen, fade_at(t, 0.0, 0.6))
 		f0 = fade_at(t, 0.05, 0.7)
 		title = self.lab("ÉLAN", "title", theme.PRIMARY, spacing=70, kind="thin")
-		ty = m.px(205) + int((1.0 - f0) * m.px(24))
+		ty = m.px(192) + int((1.0 - f0) * m.px(24))
 		title.draw(screen, m.cx, ty, "center", 255 * f0)
 		ly = ty + int(title.h * 0.42)
 		self.hline(screen, m.cx, ly, int(m.px(160) * (0.3 + 0.7 * f0)), theme.ACCENT, 240 * f0)
@@ -323,39 +366,15 @@ class TitleScreen(BaseScreen):
 		tag = self.lab("momentum is everything", "body", theme.PRIMARY, spacing=6)
 		tag.draw(screen, m.cx, ly + m.px(18), "midtop", 230 * f1)
 		f2 = fade_at(t, 0.7)
-		pulse = 0.8 + 0.2 * math.sin(t * 3.4)
-		py = ly + m.px(92)
-		labels = [self.lab(name, "mid", theme.WHITE if k == choice else theme.PRIMARY_DIM, spacing=6) for k, name in enumerate(TITLE_CHOICES)]
-		spread = m.px(70)
-		x = m.cx - (sum(l.w for l in labels) + spread * (len(labels) - 1)) // 2
-		hits = []
-		pad = m.px(16)
-		for k, label in enumerate(labels):
-			picked = k == choice
-			label.draw(screen, x, py, "topleft", 255 * f2 * (pulse if picked else 0.62))
-			if picked:
-				self.hline(screen, x + label.w // 2, py + label.h + m.px(4), label.w, theme.ACCENT, 240 * f2)
-			hits.append((pygame.Rect(x - pad, py - pad, label.w + 2 * pad, label.h + 2 * pad), k))
-			x += label.w + spread
+		hits, y = self.draw_rows(screen, t, view, ly + m.px(58), f2)
 		hint = TITLE_HINT_PAD if pad_connected else TITLE_HINT
-		self.lab(hint, "tiny", theme.PRIMARY_DIM, spacing=3).draw(screen, m.cx, py + labels[0].h + m.px(14), "midtop", 220 * f2)
-		if best_score:
-			cap = self.lab("BEST", "small", theme.PRIMARY_DIM, spacing=5)
-			val = self.lab(fmt_int(best_score), "body", theme.ACCENT, spacing=1)
-			gap = m.px(14)
-			tail = self.lab(career, "small", theme.PRIMARY_DIM, spacing=4) if career else None
-			w = cap.w + gap + val.w + (gap * 3 + tail.w if tail else 0)
-			by = py + m.px(84)
-			x = m.cx - w // 2
-			cap.draw(screen, x, by + val.h // 2, "midleft", 230 * f2)
-			val.draw(screen, x + cap.w + gap, by + val.h // 2, "midleft", 255 * f2)
-			if tail:
-				tail.draw(screen, x + cap.w + gap + val.w + gap * 3, by + val.h // 2, "midleft", 230 * f2)
+		self.lab(hint, "tiny", theme.PRIMARY_DIM, spacing=3).draw(screen, m.cx, y - m.px(28), "midtop", 220 * f2)
+		self.draw_records(screen, view, y, f2)
 		f3 = fade_at(t, 1.0)
 		self.sheet.refresh()
 		rh = self.lab(RULES[0], "small", theme.PRIMARY, 1).h
-		rules_y = m.h - m.px(34) - rh * len(RULES)
-		sheet_y = rules_y - m.px(40) - self.sheet.height()
+		rules_y = m.h - m.px(24) - rh * len(RULES)
+		sheet_y = rules_y - m.px(22) - self.sheet.height()
 		self.sheet.draw(screen, sheet_y, 255 * f3)
 		f4 = fade_at(t, 1.25)
 		ry = rules_y
@@ -552,13 +571,22 @@ class GameOverScreen(BaseScreen):
 	def draw(self, screen, t, summary):
 		m = self.m
 		g = lambda n, d=0: getattr(summary, n, d)
-		self.shade.draw(screen, fade_at(t, 0.0, 0.5))
+		done = bool(g("completed", False))
+		timed = bool(g("timed", False))
+		unit = str(g("unit", "SECTOR") or "SECTOR")
+		levels = int(g("levels", 0) or 0)
+		self.shade.draw(screen, fade_at(t, 0.0, 0.5) * (0.75 if done else 1.0))
 		f0 = fade_at(t, 0.0, 0.5)
-		y = int(m.h * 0.2)
-		head = self.lab("FLUX DEPLETED", "big", theme.DANGER, spacing=12)
+		y = int(m.h * (0.11 if done else 0.2))
+		tone = theme.WHITE if done else theme.DANGER
+		head = fit_label(self, "WELCOME TO THE SINGULARITY" if done else "FLUX DEPLETED", ("big", "mid"), tone, m.w - m.px(60), 12)
 		head.draw(screen, m.cx, y + int((1.0 - f0) * m.px(20)), "midtop", 255 * f0)
 		y += head.h + m.px(10)
-		self.hline(screen, m.cx, y, m.px(200), theme.DANGER, 200 * f0)
+		self.hline(screen, m.cx, y, m.px(260 if done else 200), tone, 200 * f0)
+		if done:
+			sub = self.lab("STORY COMPLETE  -  %d LEVELS BEHIND YOU" % levels, "small", theme.ACCENT_HOT, spacing=6)
+			sub.draw(screen, m.cx, y + m.px(10), "midtop", 240 * f0)
+			y += sub.h + m.px(8)
 		y += m.px(34)
 		f1 = fade_at(t, 0.3)
 		cap = self.lab("FINAL SCORE", "small", theme.PRIMARY_DIM, spacing=5)
@@ -585,17 +613,22 @@ class GameOverScreen(BaseScreen):
 		bv.draw(screen, bx + bc.w + gap, y + bv.h // 2, "midleft", 255 * f1)
 		y += bv.h + m.px(14)
 		rank = g("rank", "")
-		if rank:
+		if rank and not done:
 			note = "NEW FRONTIER   -   " if g("frontier", False) else ""
-			line = self.lab("%sDEEPEST SECTOR %d   -   %s" % (note, int(g("deepest", 0) or 0), rank), "small", theme.ACCENT if note else theme.PRIMARY_DIM, spacing=4)
+			line = self.lab("%sDEEPEST %s %d   -   %s" % (note, unit, int(g("deepest", 0) or 0), rank), "small", theme.ACCENT if note else theme.PRIMARY_DIM, spacing=4)
 			line.draw(screen, m.cx, y, "midtop", 240 * f2)
+		if done and timed:
+			y = self.draw_time(screen, t, summary, y + m.px(6), f2)
 		y += m.px(56)
-		stats = (
-			("SECTOR", str(int(g("sector", 1) or 0))),
+		duration = g("duration", 0) or 0
+		stats = [
+			(unit if not done else unit + "S", str(int(g("sector", 1) or 0)) + (" / %d" % levels if levels else "")),
 			("MOTES", fmt_int(g("motes", 0) or 0)),
 			("TOP SPEED", f"{int(g('top_speed', 0) or 0)} m/s"),
-			("FLIGHT TIME", fmt_time(g("duration", 0) or 0)),
-		)
+			("FLIGHT TIME", fmt_clock(duration, 2) if timed else fmt_time(duration)),
+		]
+		if done and timed:
+			stats.pop()
 		vals = [self.lab(v, "mid", theme.PRIMARY, 1) for _, v in stats]
 		caps = [self.lab(c, "tiny", theme.PRIMARY_DIM, 4) for c, _ in stats]
 		cw = max(m.px(220), max(max(v.w, c.w) for v, c in zip(vals, caps)) + m.px(40))
@@ -613,6 +646,29 @@ class GameOverScreen(BaseScreen):
 		f3 = fade_at(t, 1.6)
 		pulse = 0.8 + 0.2 * math.sin(t * 3.4)
 		self.lab("PRESS SPACE TO FLY AGAIN", "mid", theme.WHITE, spacing=6).draw(screen, m.cx, y, "midtop", 255 * f3 * pulse)
+
+
+	def draw_time(self, screen, t, summary, y, fade):
+		m = self.m
+		cap = self.lab("FINAL TIME", "small", theme.PRIMARY_DIM, spacing=5)
+		cap.draw(screen, m.cx, y, "midtop", 230 * fade)
+		y += cap.h
+		val = self.lab(fmt_clock(getattr(summary, "duration", 0.0) or 0.0, 2), "big", theme.WHITE, spacing=3)
+		val.draw(screen, m.cx, y, "midtop", 255 * fade)
+		y += val.h + m.px(6)
+		if getattr(summary, "new_time", False):
+			tag = self.lab("NEW BEST TIME", "body", theme.ACCENT, spacing=8, bold=True)
+			fw, fh = tag.w + m.px(40), tag.h + m.px(14)
+			pulse = 0.7 + 0.3 * math.sin(t * 5.0)
+			self.frame(fw, fh, theme.ACCENT).draw(screen, m.cx, y + fh // 2, "center", 255 * fade * pulse)
+			tag.draw(screen, m.cx, y + fh // 2, "center", 255 * fade)
+			return y + fh
+		best = float(getattr(summary, "best_time", 0.0) or 0.0)
+		if best <= 0.0:
+			return y
+		line = self.lab("BEST TIME   %s" % fmt_clock(best, 2), "small", theme.PRIMARY_DIM, spacing=4)
+		line.draw(screen, m.cx, y, "midtop", 230 * fade)
+		return y + line.h
 
 
 class Screens:
@@ -657,9 +713,9 @@ class Screens:
 		self.check(screen)
 		self.loading.draw(screen, progress, label)
 
-	def draw_title(self, screen, t, best_score, pad_connected, choice=0, career=None):
+	def draw_title(self, screen, t, view, pad_connected):
 		self.check(screen)
-		return self.title.draw(screen, t, best_score, pad_connected, choice, career)
+		return self.title.draw(screen, t, view, pad_connected)
 
 	def draw_pause(self, screen, t, items, selected, title="PAUSED", footer=None, extra=None):
 		self.check(screen)

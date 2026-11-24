@@ -11,6 +11,7 @@ from elan.world.sky import SkyBaker
 from elan.world.detail import DetailBaker
 from elan.world.paths import PathPlanner
 from elan.world.tunnel import TunnelBaker
+from elan.world.clouds import CloudBaker
 
 STAGES = (
 	'raising spires', 'weaving arches', 'lifting islands', 'eroding rock', 'measuring distances',
@@ -50,6 +51,7 @@ class World:
 		self.ripple = None
 		self.star_dirs = None
 		self.star_colors = None
+		self.clouds = None
 		self.device = None
 
 	def _move(self, tensor, device, breathe):
@@ -89,6 +91,8 @@ class World:
 			self.ripple = self.ripple.to(device)
 			self.star_dirs = self.star_dirs.to(device)
 			self.star_colors = self.star_colors.to(device)
+			if self.clouds is not None:
+				self.clouds.to(device)
 			self.tile = None
 			self.aux_tile = None
 			self.device = device
@@ -107,7 +111,7 @@ class WorldBaker:
 		if pause > 0.0:
 			time.sleep(pause)
 
-	def bake(self, seed, sector, progress=None):
+	def bake(self, seed, sector, progress=None, finale=False):
 		def tick(label):
 			self._breathe()
 			if progress is not None:
@@ -117,7 +121,7 @@ class WorldBaker:
 		world.seed = seed
 		world.sector = sector
 		with torch.no_grad():
-			palette = self.book.pick(sector, seed)
+			palette = self.book.finale(seed) if finale else self.book.pick(sector, seed)
 			sun_dir = self.book.sun_direction(palette)
 			noise = SpectralNoise(self.device, seed * 1000003 + sector * 7919 + 17)
 			dist, solid_fraction = TerrainBuilder(self.device).build(noise, palette['shape'], tick, self._breathe)
@@ -129,6 +133,7 @@ class WorldBaker:
 			del sampler
 			tick('painting sky')
 			sky, fog, star_dirs, star_colors = SkyBaker(self.device).bake(noise, palette, sun_dir)
+			world.clouds = CloudBaker(self.device).bake(noise, palette, sun_dir)
 			tick('carving detail')
 			details = DetailBaker(self.device)
 			relief = palette['style']['relief']
@@ -159,20 +164,24 @@ class WorldBaker:
 			tick('uploading')
 		return world
 
-	def bake_tunnel(self, seed, sector, progress=None):
+	def bake_tunnel(self, seed, sector, progress=None, plunge=False):
 		world = World()
 		world.seed = seed
 		world.sector = sector
 		if progress is not None:
 			progress(0.1, 'folding space')
 		with torch.no_grad():
-			TunnelBaker(self.device).bake(world, self.book.tunnel(sector, seed), seed, sector)
+			palette = self.book.plunge(sector, seed) if plunge else self.book.tunnel(sector, seed)
+			TunnelBaker(self.device).bake(world, palette, seed, sector)
 		if progress is not None:
 			progress(0.9, 'uploading')
 		return world
 
 	def bake_and_upload(self, kind, seed, sector, render_device, progress=None):
-		world = self.bake_tunnel(seed, sector, progress) if kind == 'tunnel' else self.bake(seed, sector, progress)
+		if kind in ('tunnel', 'plunge'):
+			world = self.bake_tunnel(seed, sector, progress, kind == 'plunge')
+		else:
+			world = self.bake(seed, sector, progress, kind == 'singularity')
 		world.upload(render_device, self._breathe)
 		if progress is not None:
 			progress(1.0, 'ready')

@@ -16,6 +16,7 @@ from elan.render.lens import Wormhole
 from elan.render.minimap import Minimap
 from elan.render.lightfield import LightField
 from elan.render.flow import TunnelFlow
+from elan.render.clouds import CloudLayer
 
 
 class View:
@@ -41,6 +42,7 @@ class View:
 		self.wormhole = None
 		self.tunnel = None
 		self.route = None
+		self.horizon = None
 
 
 class Renderer:
@@ -72,11 +74,13 @@ class Renderer:
 		self.lens = Wormhole(self.device)
 		self.lights = LightField(self.device)
 		self.flow = TunnelFlow()
+		self.clouds = CloudLayer(self.device)
 		self.origin = uniforms.view('origin', 1, 1, 1, 1, 3)
 		self.far = torch.tensor(1.0e9, device=self.device)
 		self.raymat = uniforms.view('raymat', 3, 3)
 		self.world = None
 		self.relief = None
+		self.fade = 0.0
 		self.exposure_tint = (1.0, 1.0, 1.0)
 		self.scale = 0.0
 		self.w = 0
@@ -118,15 +122,18 @@ class Renderer:
 		self.post.allocate(h, w, self.out_h, self.out_w)
 		self.minimap.allocate(self.out_h, self.out_w)
 		self.lens.allocate(h, w)
+		self.clouds.allocate(h, w)
 
 	def set_world(self, world):
 		self.world = world
 		self.relief = world.detail[:, 0:1]
+		self.fade = float(world.style['far_fade'])
 		self.shader.set_world(world)
 		self.atmosphere.set_world(world)
 		self.scene.set_world(world)
 		self.lights.set_world(world, self.scene.layout)
 		self.flow.set_world(world)
+		self.clouds.set_world(world)
 		self.minimap.set_world(world, self.scene.layout)
 		self.post.reset()
 
@@ -184,6 +191,8 @@ class Renderer:
 		clock = self._mark('march', clock)
 		self.shader.glow_field = self.lights.update(self.scene, view.dt)
 		color, cover, sea = self.shader.shade(world, pos, t, rays_world, view.submerged, view.time)
+		if self.fade > 0.0:
+			cover.mul_(torch.sub(RenderCfg.FAR, t.view(n)).mul_(1.0 / self.fade).clamp_(0.0, 1.0))
 		clock = self._mark('shade', clock)
 		if world.coords is not None:
 			color = self.atmosphere.tunnel(color, t)
@@ -191,10 +200,13 @@ class Renderer:
 			shaft = self.atmosphere.shafts(self.origin, rays_n, t, self.frame)
 			color = self.atmosphere.compose(world, color, cover, sea, t, rays_world, shaft, view.pos[1], view.submerged)
 		clock = self._mark('atmosphere', clock)
-		self.scene.simulate(view.dt)
-		points, tints = self.scene.gather(view.time)
 		depth = t.view(n)
 		blocker = torch.where(cover > 0.5, depth, self.far)
+		if world.clouds is not None and not view.submerged:
+			color = self.clouds.apply(color, world, view, rays_world, blocker, self.frame, self.atmosphere.sigma)
+			clock = self._mark('clouds', clock)
+		self.scene.simulate(view.dt)
+		points, tints = self.scene.gather(view.time)
 		self.splatter.splat(points, tints, self.scene.far_points, self.scene.far_colors, blocker, self.scene.motes)
 		self.splatter.compose(color)
 		if view.wormhole is not None:

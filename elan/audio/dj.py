@@ -204,7 +204,8 @@ class DJBrain:
 
 	def tick(self, dt, mix):
 		get = getattr
-		intensity = min(max(get(mix, 'intensity', 0.0), 0.0), 1.0)
+		serene = get(mix, 'serene', 0.0) > 0.5
+		intensity = 0.0 if serene else min(max(get(mix, 'intensity', 0.0), 0.0), 1.0)
 		rate = 1.1 if intensity > self.energy else 1.8
 		self.energy += (intensity - self.energy) * (1.0 - math.exp(-dt / rate))
 		self.low_time = self.low_time + dt if self.energy < 0.2 else 0.0
@@ -216,6 +217,8 @@ class DJBrain:
 		deep = 0.0
 		if self.outro:
 			drums, bass, other = 1.0, 1.0, 1.0
+		if serene:
+			drums, bass, other = 0.0, 0.0, 1.0
 		if get(mix, 'submerged', 0.0) > 0.5:
 			deep = 0.9 * max(drums, 0.6)
 			drums = 0.0
@@ -223,6 +226,8 @@ class DJBrain:
 		tension = smooth(0.25, 0.7, get(mix, 'tether', 0.0))
 		bass *= 1.0 - 0.92 * tension
 		drums *= 1.0 - 0.25 * tension
+		if serene:
+			self.stun = 0.0
 		if self.stun > 0.0:
 			drums = 0.0
 			deep = 0.0
@@ -235,6 +240,8 @@ class DJBrain:
 			target = targets[name]
 			current = self.gains[name]
 			quick = 0.07 if target < current else 0.2
+			if serene:
+				quick = 1.6
 			self.gains[name] = current + (target - current) * (1.0 - math.exp(-dt / quick))
 
 

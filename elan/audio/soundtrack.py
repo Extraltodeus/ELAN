@@ -165,6 +165,8 @@ class Soundtrack:
 			if getattr(mix, 'submerged', 0.0) > 0.5:
 				bright = 0.0
 			targets = (0.0, 0.88 * (0.35 + 0.65 * bright) * duck, 0.7 * (1.0 - bright) * duck)
+			if getattr(mix, 'serene', 0.0) > 0.5:
+				targets = (0.0, 0.0, 0.85 * duck)
 		if not flight:
 			targets = (targets[0], 0.0, 0.0)
 		if not menu:

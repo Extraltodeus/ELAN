@@ -1,9 +1,10 @@
 import math
 import numpy as np
 
-from elan.config import FlightCfg, RenderCfg, RulesCfg, TunnelCfg, WorldCfg
+from elan.config import FlightCfg, RenderCfg, RulesCfg, StoryCfg, TunnelCfg, WorldCfg
 from elan.camera import Camera
 from elan.field import FieldSampler
+from elan.modes import MODES
 from elan.physics import Kite
 from elan.rail import TunnelRail
 from elan.render import View
@@ -65,6 +66,10 @@ class HudState:
 		self.hyper = False
 		self.grip = 1.0
 		self.dev = None
+		self.stage = ''
+		self.plunge = False
+		self.clock = None
+		self.finale = False
 
 
 class Summary:
@@ -79,6 +84,13 @@ class Summary:
 		self.deepest = 0
 		self.rank = ''
 		self.frontier = False
+		self.mode = 'chill'
+		self.unit = 'SECTOR'
+		self.levels = 0
+		self.timed = False
+		self.completed = False
+		self.best_time = 0.0
+		self.new_time = False
 
 
 class Mix:
@@ -94,6 +106,7 @@ class Mix:
 		self.menu = 0.0
 		self.paused = 0.0
 		self.submerged = 0.0
+		self.serene = 0.0
 
 
 class Game:
@@ -178,6 +191,14 @@ class Game:
 		self.surge = 0.0
 		self.limp = 0.0
 		self.grip = 1.0
+		self.step = 0.0
+		self.guide = None
+		self.mode = MODES[0]
+		self.finale = False
+		self.plunge = False
+		self.sealed = None
+		self.finale_time = 0.0
+		self.horizon = 0.0
 
 	def say(self, text, kind='info', ttl=2.6):
 		if self.attract:
@@ -186,10 +207,35 @@ class Game:
 		if len(self.messages) > 4:
 			self.messages.pop(0)
 
+	def cheer(self, text, kind='good', ttl=2.0):
+		if self.finale:
+			return
+		self.say(text, kind, ttl)
+
+	def drain(self):
+		return self.mode.drain(self.sector)
+
+	def homing(self):
+		if not self.gate_open or self.phase != 'sector':
+			return False
+		return not self.finale or (not self.attract and self.finale_time > StoryCfg.PORTAL_DELAY)
+
+	def course(self):
+		return self.guide if self.finale else self.alive
+
+	def progress(self):
+		return min(max(self.travel / self.travel_need, 0.0), 1.0)
+
 	def bonus(self):
 		return RulesCfg.TIER_BONUS[self.tier]
 
-	def start_run(self, sector=0):
+	def start_run(self, sector=0, mode=None):
+		self.mode = mode or MODES[0]
+		self.finale = False
+		self.plunge = False
+		self.sealed = None
+		self.finale_time = 0.0
+		self.horizon = 0.0
 		self.time = 0.0
 		self.sector = sector
 		self.phase = 'sector'
@@ -230,6 +276,7 @@ class Game:
 		self.motes = ribbons.reshape(-1, 3).astype(np.float32)
 		self.deep = self.motes[:, 1] < 0.0
 		self.alive = np.ones(self.motes.shape[0], dtype=bool)
+		self.guide = np.ones(self.motes.shape[0], dtype=bool)
 		self.nearest_mote = None
 		self.nearest_dry = None
 		self.ribbon_left = np.full(ribbons.shape[0], self.ribbon_size, dtype=np.int32)
@@ -256,6 +303,9 @@ class Game:
 		self.phase = 'sector'
 		self.path = None
 		self.hyper = False
+		self.plunge = False
+		self.horizon = 0.0
+		self.finale = bool(world.palette.get('final'))
 		self.respawn = RulesCfg.RIBBON_RESPAWN
 		self.reach = RulesCfg.MOTE_RADIUS
 		self.kite.warp = 0.0
@@ -268,22 +318,55 @@ class Game:
 		self.scene.set_gate(0.04)
 		speed = 52.0 if fresh else min(max(self.kite.speed, 75.0), TunnelCfg.EXIT_SPEED)
 		self.kite.reset(world.spawn_pos, world.spawn_dir, speed)
-		self.say('SECTOR %d  -  %s' % (self.sector + 1, world.palette['name']), 'big', 3.5)
+		if self.finale:
+			self._settle(fresh)
+			return
+		self.say('%s  -  %s' % (self.mode.stage(self.sector), world.palette['name']), 'big', 3.5)
 		if self.career is not None and not self.attract:
 			for text, kind in self.career.enter(self.sector + 1, world.palette['key'], world.palette['name']):
 				self.say(text, kind, 4.0)
+
+	def _settle(self, fresh):
+		if self.sealed is None:
+			self.sealed = (self.score, self.duration)
+		self.finale_time = 0.0
+		self.horizon = 0.0 if fresh else 1.0
+		self.flux = 1.0
+		self.dry = False
+		self.stall = 0.0
+		self.combo = 1
+		self.combo_time = 0.0
+		self.alive[:] = False
+		self.ribbon_left[:] = 0
+		self.respawn = 1.0e9
+		self.ring_cool[:] = 1.0e9
+		self.quota = self.quota_need
+		self.gate_open = True
+		self.scene.clear_course()
+		self.scene.set_gate(1.0)
+		if not fresh:
+			self.kite.reset(self.world.spawn_pos, self.world.spawn_dir, StoryCfg.ARRIVAL_SPEED)
+		self.messages = []
+		self.say('WELCOME TO THE SINGULARITY', 'big', 8.0)
+		self.say('NO QUOTA  -  NO DRAIN  -  NOTHING LEFT TO CHASE', 'good', 8.0)
+		self.say('THE WHITE PORTAL IS OPEN  -  CROSS IT WHENEVER YOU ARE READY', 'info', 11.0)
 
 	def enter_tunnel(self, world):
 		self._bind(world)
 		self.phase = 'tunnel'
 		self.path = world.path
 		self.hyper = bool(world.palette['hyper'])
+		self.plunge = bool(world.palette.get('plunge'))
+		self.finale = False
+		self.horizon = 0.0
 		self.respawn = TunnelCfg.RESPAWN
 		self.reach = TunnelCfg.MOTE_RADIUS
 		self.surge = 0.0
 		self.kite.rail = TunnelRail(world.path)
 		self.travel = 0.0
 		self.travel_need = TunnelCfg.TRAVEL_HYPER if self.hyper else TunnelCfg.TRAVEL
+		if self.plunge:
+			self.travel_need = TunnelCfg.TRAVEL_PLUNGE
 		self.quota_need = 10 ** 9
 		self.scene.set_gate(0.0)
 		self.kite.reset(world.spawn_pos, world.spawn_dir, max(self.kite.speed, TunnelCfg.ENTRY_SPEED))
@@ -293,9 +376,14 @@ class Game:
 		self.say(world.palette['name'], 'big', 3.0)
 		if self.hyper:
 			self.say('INFINITE FLUX  -  FULL BURN', 'good', 4.0)
+		if self.plunge:
+			self.say('NO WAY BACK  -  LET IT PULL YOU IN', 'good', 5.0)
 
 	def _journey(self):
 		if self.phase != 'tunnel':
+			if self.finale:
+				self.finale_time += self.step
+				self.horizon = max(self.horizon - self.step / StoryCfg.EMERGE_TIME, 0.0)
 			return
 		kite = self.kite
 		length = self.path.length
@@ -304,6 +392,9 @@ class Game:
 		self.station = station
 		if abs(step) < 120.0:
 			self.travel += step
+		if self.plunge:
+			self.horizon = self.progress()
+			kite.warp = TunnelCfg.PLUNGE_THRUST * self.horizon
 		if self.travel >= self.travel_need and not self.over:
 			self.arrival = True
 
@@ -328,9 +419,10 @@ class Game:
 	def update(self, dt, controls):
 		kite = self.kite
 		self.time += dt
+		self.step = dt
 		self.before = (kite.pos[0], kite.pos[1], kite.pos[2])
 		self.drifting = controls.drift
-		if not self.over:
+		if not self.over and self.sealed is None:
 			self.duration += dt
 		self.flow = max(min(self.flow + RulesCfg.FLOW_GRAZE * kite.graze * dt, 1.0) - RulesCfg.FLOW_DECAY * dt, 0.0)
 		kite.slip = self.flow
@@ -356,6 +448,8 @@ class Game:
 		self._rings(dt)
 		self._gate()
 		self._flux(dt)
+		if self.sealed is not None:
+			self.score = self.sealed[0]
 		for message in self.messages:
 			message.age += dt
 		self.messages = [m for m in self.messages if m.age < m.ttl]
@@ -423,7 +517,7 @@ class Game:
 		self.score += points
 		self.flux += RulesCfg.FLUX_SLING
 		self.flux_gain = 1.0
-		self.say('SLINGSHOT  +%d' % points, 'good', 2.0)
+		self.cheer('SLINGSHOT  +%d' % points, 'good', 2.0)
 		self.audio.play('ribbon', 0.5)
 
 	def _burst(self, pos, vel, color, count, spread, speed, life):
@@ -455,7 +549,7 @@ class Game:
 				self.shake = max(self.shake, 0.4)
 				self.audio.play('skim_hit', min(0.45 + amount / 200.0, 1.0))
 				self._burst((kite.pos[0], 0.4, kite.pos[2]), (kite.vel[0] * 0.6, 9.0, kite.vel[2] * 0.6), (0.6, 0.8, 1.0), 120, 1.2, 9.0, 0.8)
-				self.say('SKIP x%d  +%d' % (self.skips, points), 'good', 1.6)
+				self.cheer('SKIP x%d  +%d' % (self.skips, points), 'good', 1.6)
 			elif name == 'dive':
 				self.shake = max(self.shake, 0.4)
 				self.flash = max(self.flash, 0.06)
@@ -477,7 +571,7 @@ class Game:
 				if amount > 0.3:
 					self.audio.play('start', 0.35 + 0.45 * amount)
 				self._burst((kite.pos[0], 0.5, kite.pos[2]), (kite.vel[0] * 0.5, max(kite.vel[1], 0.0) * 0.6 + 8.0, kite.vel[2] * 0.5), (0.7, 0.9, 1.0), 260 + int(340 * amount), 1.4 + amount, 12.0 + 10.0 * amount, 1.0 + 0.4 * amount)
-				self.say(('SURGE BREACH  +%d' if full else 'BREACH  +%d') % points, 'big' if full else 'good', 2.2 if full else 1.8)
+				self.cheer(('SURGE BREACH  +%d' if full else 'BREACH  +%d') % points, 'big' if full else 'good', 2.2 if full else 1.8)
 			elif name == 'scrape':
 				self.shake = max(self.shake, 0.35)
 				self.damage = max(self.damage, 0.3)
@@ -528,7 +622,7 @@ class Game:
 		ratio = min(kite.speed / FlightCfg.SPEED_REF, 1.3)
 		drive = max(min(max((kite.speed - RenderCfg.WARP_SPEED) / RenderCfg.WARP_SPAN, 0.0), 1.0), 0.4 * kite.rush) if self.warp_enabled else 0.0
 		if self.phase == 'tunnel':
-			ramp = min(max((self.travel / self.travel_need - TunnelCfg.SURGE_START) / (1.0 - TunnelCfg.SURGE_START), 0.0), 1.0)
+			ramp = min(max((self.progress() - TunnelCfg.SURGE_START) / (1.0 - TunnelCfg.SURGE_START), 0.0), 1.0)
 			self.surge = max(self.surge, ramp * ramp)
 			if self.warp_enabled:
 				drive = max(drive, TunnelCfg.WARP + (1.0 - TunnelCfg.WARP) * self.surge)
@@ -570,6 +664,8 @@ class Game:
 		self.say('RIBBON COMPLETE  +%d' % points, 'good', 2.4)
 
 	def _motes(self, dt):
+		if self.finale:
+			return
 		kite = self.kite
 		rules = RulesCfg
 		delta = self._wrapped(self.motes - np.asarray(kite.pos, dtype=np.float32))
@@ -630,7 +726,7 @@ class Game:
 		if self.touched >= 0:
 			self.route.adopt(self.touched, vel)
 			self.touched = -1
-		self.route.advance(pos, vel, kite.forward(), self.alive)
+		self.route.advance(pos, vel, kite.forward(), self.course())
 		self.links = self.route.links(pos, self.alive) if self.phase == 'sector' and not self.gate_open else []
 
 	def _sweep(self, delta, dist2):
@@ -713,16 +809,22 @@ class Game:
 			self.dry = False
 			self.stall = 0.0
 			return
+		if self.finale:
+			self.flux = 1.0
+			self.dry = False
+			self.stall = 0.0
+			return
 		kite = self.kite
 		rules = RulesCfg
 		gain = rules.FLUX_GRAZE * kite.graze * (0.0 if self.scrape > 0.0 else 1.0) + rules.FLUX_SKIM * kite.skim
 		if self.phase == 'tunnel':
+			endless = self.hyper or self.plunge
 			self.dry = False
 			self.stall = 0.0
-			drain = rules.FLUX_BOOST if kite.boosting and not self.hyper else 0.0
-			self.flux = 1.0 if self.hyper else min(max(self.flux + (gain - drain) * dt, 0.04), 1.0)
+			drain = rules.FLUX_BOOST if kite.boosting and not endless else 0.0
+			self.flux = 1.0 if endless else min(max(self.flux + (gain - drain) * dt, 0.04), 1.0)
 			return
-		drain = 0.0 if self.dry else rules.FLUX_DRAIN + self.sector * rules.FLUX_DRAIN_SECTOR
+		drain = 0.0 if self.dry else self.drain()
 		drain += rules.FLUX_SCRAPE * self.scrape
 		if kite.boosting:
 			drain += rules.FLUX_BOOST
@@ -767,6 +869,13 @@ class Game:
 		out.motes = self.motes_total
 		out.top_speed = self.top_speed
 		out.duration = self.duration
+		out.mode = self.mode.KEY
+		out.unit = self.mode.UNIT
+		out.levels = self.mode.LEVELS
+		out.timed = self.mode.TIMED
+		out.completed = self.sealed is not None
+		if out.levels:
+			out.sector = min(out.sector, out.levels)
 		if self.career is not None:
 			out.deepest = self.career.deepest()
 			out.rank = self.career.rank()
@@ -805,10 +914,26 @@ class Game:
 			view.tether = (camera.hand, self._nearest(kite.anchor))
 		view.route = self.links
 		if self.phase == 'tunnel':
-			view.tunnel = (min(max(self.travel / self.travel_need, 0.0), 1.0), self.hyper)
+			view.tunnel = (self.progress(), self.hyper)
+		if self.horizon > 0.0:
+			view.horizon = self._horizon()
 		if self.gate_open:
 			view.wormhole = (self._nearest(self.world.gate_pos), WorldCfg.GATE_RADIUS * WorldCfg.GATE_LENS, self.world.palette['gate'])
 		return view
+
+	def _horizon(self):
+		if not self.plunge:
+			return ('rise', self.horizon, (0.0, 0.0), self.warp_enabled)
+		camera = self.camera
+		spot = self._nearest(self.path.axis(self.station + StoryCfg.FALL_LEAD))
+		rx, ry, rz = spot[0] - camera.pos[0], spot[1] - camera.pos[1], spot[2] - camera.pos[2]
+		depth = rx * camera.forward[0] + ry * camera.forward[1] + rz * camera.forward[2]
+		if depth < 1.0:
+			return ('fall', self.horizon, (0.0, 0.0), self.warp_enabled)
+		hold = 1.0 - self.horizon ** 3
+		across = (rx * camera.right[0] + ry * camera.right[1] + rz * camera.right[2]) / depth * hold
+		above = (rx * camera.up[0] + ry * camera.up[1] + rz * camera.up[2]) / depth * hold
+		return ('fall', self.horizon, (across, above), self.warp_enabled)
 
 	def _project(self, target, size, marker):
 		camera = self.camera
@@ -874,8 +999,14 @@ class Game:
 		hs.dry = self.dry and not self.over
 		hs.stall = self.stall
 		hs.hyper = self.hyper
+		hs.finale = self.finale
+		hs.stage = 'THE SINGULARITY' if self.finale else self.mode.stage(self.sector)
+		if self.mode.TIMED:
+			hs.clock = self.sealed[1] if self.sealed is not None else self.duration
 		if self.phase == 'tunnel':
-			hs.tunnel = min(max(self.travel / self.travel_need, 0.0), 1.0)
+			hs.tunnel = self.progress()
+			hs.stage = '%s %d  >  %s' % (self.mode.UNIT, self.sector + 1, '?' if self.plunge else str(self.sector + 2))
+			hs.plunge = self.plunge
 		if kite.speed > 8.0:
 			ahead = (kite.pos[0] + kite.vel[0] * 4.0, kite.pos[1] + kite.vel[1] * 4.0, kite.pos[2] + kite.vel[2] * 4.0)
 			marker = self._project(ahead, size, Marker('velocity'))
@@ -914,4 +1045,5 @@ class Game:
 		mix.menu = 1.0 if menu else 0.0
 		mix.paused = 1.0 if paused else 0.0
 		mix.submerged = 1.0 if self.camera.submerged() else 0.0
+		mix.serene = 1.0 if self.finale else 0.0
 		return mix

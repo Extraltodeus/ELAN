@@ -36,7 +36,7 @@ class Autopilot:
 			cost = np.sqrt((delta * delta).sum(1)) + 4.0 * np.maximum(delta[:, 1], 0.0)
 			cost[~game.alive | game.deep] = 1.0e12
 			return game.motes[int(np.argmin(cost))]
-		if game.gate_open:
+		if game.homing():
 			return game.world.gate_pos
 		size = game.ribbon_size
 		if self.ribbon >= len(game.ribbon_left):

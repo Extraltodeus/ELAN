@@ -118,6 +118,9 @@ class PointScene:
 		start, stop = self.layout.ring_slice(ring)
 		self._set_range(start, stop, value)
 
+	def clear_course(self):
+		self._set_range(0, self.layout.gate_start, 0.0)
+
 	def set_gate(self, level):
 		self._set_range(self.layout.gate_start, self.layout.total, level)
 

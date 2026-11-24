@@ -14,6 +14,7 @@ class Forms:
 		self.ys = ys
 		self.warp_x = warp_x
 		self.warp_z = warp_z
+		self.land = None
 
 	def layer(self, name):
 		return getattr(self, name)()
@@ -108,14 +109,12 @@ class Forms:
 		sampled = self._drape(torch.stack((height, lean), 0), shape['warp_amp'])
 		return (self.ys - sampled[0]) * sampled[1]
 
-	def _cells(self):
+	def _sites(self, cells, spread):
 		cfg = WorldCfg
 		v = cfg.VOXEL
-		shape = self.shape
 		nz, nx = cfg.NZ, cfg.NX
-		cells = int(shape['cells'])
 		pitch = cfg.SIZE_X / cells
-		jitter = (self.noise.uniform((cells, cells, 2)) - 0.5) * shape['cell_jitter']
+		jitter = (self.noise.uniform((cells, cells, 2)) - 0.5) * spread
 		index = torch.arange(cells, device=self.device, dtype=torch.float32) + 0.5
 		seed_x = ((index.view(1, cells) + jitter[..., 0]) * pitch).reshape(-1)
 		seed_z = ((index.view(cells, 1) + jitter[..., 1]) * pitch).reshape(-1)
@@ -125,15 +124,82 @@ class Forms:
 		dx = (dx - cfg.SIZE_X * torch.round(dx / cfg.SIZE_X)).square_()
 		nearest = torch.empty((nz, nx), device=self.device, dtype=torch.long)
 		edge = torch.empty((nz, nx), device=self.device)
+		reach = torch.empty((nz, nx), device=self.device)
 		for start in range(0, nz, 32):
 			dz = pz[start:start + 32].view(-1, 1) - seed_z.view(1, -1)
 			dz = (dz - cfg.SIZE_Z * torch.round(dz / cfg.SIZE_Z)).square_()
 			both = torch.topk(dz.unsqueeze(1) + dx.unsqueeze(0), 2, dim=2, largest=False)
 			nearest[start:start + 32] = both.indices[..., 0]
+			reach[start:start + 32] = both.values[..., 0].sqrt()
 			edge[start:start + 32] = (both.values[..., 1].sqrt() - both.values[..., 0].sqrt()) * 0.5
 		col = (seed_x / v).long().clamp_(0, nx - 1)
 		row = (seed_z / v).long().clamp_(0, nz - 1)
+		return nearest, edge, reach, row, col
+
+	def _cells(self):
+		nearest, edge, _, row, col = self._sites(int(self.shape['cells']), self.shape['cell_jitter'])
 		return nearest, edge, row, col
+
+	def _land(self):
+		if self.land is None:
+			cfg = WorldCfg
+			self.land = self.noise.band((cfg.NZ, cfg.NX), cfg.VOXEL, self.shape['isle_wave'], 0.5)
+		return self.land
+
+	def _core(self, row, col):
+		shape = self.shape
+		return ((self._land()[row, col] - shape['isle_thr']) / shape['city_core']).clamp_(0.0, 1.0)
+
+	def isles(self):
+		shape = self.shape
+		height = ((self._land() - shape['isle_thr']) * shape['isle_gain']).clamp_(max=shape['isle_top'])
+		return self.ys - height.unsqueeze(1)
+
+	def _towers(self, nearest, reach, tall, girth, decks, bulb=None):
+		shape = self.shape
+		height = tall[nearest].unsqueeze(1)
+		radius = girth[nearest].unsqueeze(1)
+		reach = reach.unsqueeze(1)
+		rise = (self.ys / height.clamp_min(1.0)).clamp_(0.0, 1.0)
+		profile = (1.0 - rise).pow_(shape['city_taper']).mul_(1.0 - shape['city_tip']).add_(shape['city_tip'])
+		profile.add_(torch.exp(self.ys.clamp_min(0.0) / -shape['city_foot']), alpha=shape['city_flare'])
+		body = -FieldOps.smooth_min(profile.mul_(radius).sub_(reach), height - self.ys, 4.0)
+		del profile, rise
+		for level, span, half in decks:
+			deck = torch.maximum((self.ys - height * level).abs_().sub_(half), reach - radius * span)
+			body = FieldOps.smooth_min(body, deck, 3.0)
+			del deck
+		if bulb is not None:
+			dome = (reach * reach + (self.ys - shape['isle_top']) ** 2).sqrt_().sub_(bulb[nearest].unsqueeze(1))
+			body = FieldOps.smooth_min(body, dome, 3.0)
+		return body
+
+	def citadel(self):
+		shape = self.shape
+		nearest, _, reach, row, col = self._sites(int(shape['city_cells']), shape['city_jitter'])
+		core = self._core(row, col)
+		luck = self.noise.uniform((row.shape[0], 4))
+		built = (core > shape['city_shore']) & (luck[:, 0] < shape['city_fill'])
+		domed = built & (luck[:, 3] < shape['city_domes'])
+		low, high = shape['city_height']
+		tall = low + (high - low) * core ** shape['city_peak'] * (0.35 + 0.65 * luck[:, 1])
+		tall = torch.where(domed, tall * 0.45, tall)
+		tall = torch.where(built, tall, torch.full_like(tall, -80.0))
+		thin, wide = shape['city_girth']
+		girth = thin + (wide - thin) * (0.5 * core + 0.5 * luck[:, 2])
+		bulb = torch.where(domed, girth * shape['dome_scale'], torch.zeros_like(girth))
+		return self._towers(nearest, reach, tall, girth, (), bulb)
+
+	def spires(self):
+		shape = self.shape
+		nearest, _, reach, row, col = self._sites(int(shape['spire_cells']), shape['spire_jitter'])
+		core = self._core(row, col)
+		luck = self.noise.uniform((row.shape[0], 2))
+		built = (core > shape['spire_shore']) & (luck[:, 0] < shape['spire_fill'])
+		low, high = shape['spire_height']
+		tall = torch.where(built, low + (high - low) * luck[:, 1], torch.full_like(core, -80.0))
+		girth = torch.full_like(core, shape['spire_girth'])
+		return self._towers(nearest, reach, tall, girth, shape['spire_decks'])
 
 	def basalt(self):
 		cfg = WorldCfg

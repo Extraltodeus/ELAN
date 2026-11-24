@@ -4,7 +4,7 @@ import time
 import pygame
 import torch
 
-from elan.config import AppCfg, RenderCfg
+from elan.config import AppCfg, RenderCfg, StoryCfg
 from elan.settings import Settings
 from elan.career import Career
 from elan.display import Display, FramePacer, ResolutionGovernor
@@ -14,10 +14,13 @@ from elan.physics import Controls
 from elan.autopilot import Autopilot
 from elan.devtools import DevTools
 from elan.game import Game
+from elan.modes import MODES, mode_of
+from elan.title import TitleMenu
 from elan.render import Renderer
 from elan.world import BackgroundBaker
 from elan.audio import AudioDirector
 from elan.ui import Hud, Screens
+from elan.ui.hud import fmt_clock
 
 
 class App:
@@ -50,8 +53,10 @@ class App:
 		self.autopilot = Autopilot()
 		self.pilot = None
 		self.dev = DevTools(getattr(options, 'developer', False))
-		self.title_choice = 1 if options.autoplay else 0
-		self.title_hits = []
+		self.preview = bool(getattr(options, 'finale', False))
+		self.mode = mode_of('story' if self.preview else (getattr(options, 'mode', None) or self.settings.get('game_mode')))
+		self.title = TitleMenu(self.settings, MODES, self.mode, options.autoplay)
+		self.crowned = None
 		self.first = max(int(options.sector) - 1, 0)
 		self.baker = BackgroundBaker(self.bake_device, self.render_device, 0.0)
 		self.seed = options.seed if options.seed is not None else random.randrange(1, 1000000)
@@ -93,6 +98,11 @@ class App:
 		except pygame.error:
 			return
 
+	def _opening(self, mode):
+		if self.preview and mode.LEVELS:
+			return mode.sector_kind(mode.LEVELS), mode.LEVELS
+		return 'sector', mode.clamp(self.first)
+
 	def _pump(self):
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
@@ -120,7 +130,8 @@ class App:
 
 	def _load(self):
 		self._loading(0.02, 'waking the lambos')
-		self.baker.request('sector', self.seed, self.first)
+		kind, first = self._opening(self.mode)
+		self.baker.request(kind, self.seed, first)
 		self._loading(0.05, 'tuning instruments')
 		self.audio = AudioDirector(str(self.bake_device), self.settings.get('master_volume'), self.settings.get('music_volume'), self.settings.get('sfx_volume'))
 		self.audio.music_folder = os.path.join(self.root, 'assets', 'music')
@@ -130,7 +141,7 @@ class App:
 		self.audio.build(self.seed)
 		self._loading(0.2, 'building the eye')
 		self.renderer = Renderer(self.render_device, self.display.size)
-		world = self._obtain('sector', self.first, 0.25, 0.6)
+		world = self._obtain(kind, first, 0.25, 0.6)
 		if world is None:
 			return
 		self._loading(0.9, 'first light')
@@ -144,7 +155,7 @@ class App:
 		self.game.warp_enabled = bool(self.settings.get('warp_effect'))
 		self.game.quota_limit = self.options.quota
 		self._apply_minimap()
-		self.game.start_run(self.first)
+		self.game.start_run(first)
 		self.game.enter_world(world, True)
 		for _ in range(3):
 			self.renderer.render(self.game.build_view(1.0 / 60.0, 0.0))
@@ -158,8 +169,9 @@ class App:
 			self._begin_run()
 
 	def _queue_next(self):
+		game = self.game
 		self.baker.throttle = AppCfg.BAKE_THROTTLE
-		self.baker.expect((('tunnel', self.seed, self.game.sector), ('sector', self.seed, self.game.sector + 1)))
+		self.baker.expect(() if game.finale else game.mode.keys(self.seed, game.sector))
 
 	def _apply_scale(self):
 		choice = self.options.scale if self.options.scale is not None else self.settings.get('render_scale')
@@ -177,17 +189,21 @@ class App:
 
 	def _begin_run(self):
 		game = self.game
+		mode = self.mode
+		kind, first = self._opening(mode)
 		game.attract = False
 		if self.pilot is not None:
 			self.pilot.world = None
-		self.assisted = bool(self.options.autoplay) or self.first > 0 or self.options.quota > 0 or self.dev.enabled
+		final = kind != 'sector'
+		self.assisted = bool(self.options.autoplay) or first > 0 or self.options.quota > 0 or self.dev.enabled or final
+		self.crowned = None
 		game.career = None if self.assisted else self.career
-		self.career.begin()
-		game.start_run(self.first)
-		if self.world.sector != self.first or self.world.kind != 'sector':
+		self.career.begin(mode)
+		game.start_run(first, mode)
+		if self.world.sector != first or self.world.kind != 'sector' or bool(self.world.palette.get('final')) != final:
 			self.seed = random.randrange(1, 1000000)
 			self.baker.forget(self.seed)
-			world = self._obtain('sector', self.first, 0.0, 1.0)
+			world = self._obtain(kind, first, 0.0, 1.0)
 			if world is None:
 				return
 			self.world = world
@@ -200,8 +216,12 @@ class App:
 
 	def _dive(self):
 		game = self.game
+		if game.finale:
+			self._ascend()
+			return
 		self.audio.play('warp', 1.0)
-		tunnel = self._obtain('tunnel', game.sector, 0.0, 1.0)
+		keys = game.mode.keys(self.seed, game.sector)
+		tunnel = self._obtain(keys[0][0], game.sector, 0.0, 1.0)
 		if tunnel is None:
 			return
 		self.audio.music_event('warp')
@@ -209,16 +229,28 @@ class App:
 		self.renderer.set_world(tunnel)
 		game.enter_tunnel(tunnel)
 		self.baker.throttle = AppCfg.BAKE_THROTTLE
-		self.baker.expect((('sector', self.seed, game.sector + 1),))
+		self.baker.expect((keys[1],))
 		self.pacer.last = time.perf_counter()
+
+	def _ascend(self):
+		game = self.game
+		game.warp_requested = False
+		if self.state != 'play':
+			return
+		game.flash = 1.0
+		self.audio.play('warp', 0.9)
+		self._finish_run()
+		game.attract = True
 
 	def jump(self, sector):
 		game = self.game
-		sector = max(int(sector), 0)
+		sector = game.mode.clamp(sector)
 		world = self._obtain('sector', sector, 0.0, 1.0)
 		if world is None:
 			return
 		game.kite.release()
+		game.sealed = None
+		self.crowned = None
 		game.sector = sector
 		self.world = world
 		self.renderer.set_world(world)
@@ -231,7 +263,7 @@ class App:
 
 	def _arrive(self):
 		game = self.game
-		key = ('sector', self.seed, game.sector + 1)
+		key = game.mode.keys(self.seed, game.sector)[1]
 		if self.baker.error:
 			raise RuntimeError(self.baker.error)
 		if not self.baker.ready(*key):
@@ -243,6 +275,8 @@ class App:
 		self.renderer.set_world(world)
 		game.enter_world(world, False)
 		self.audio.play('start', 0.8)
+		if game.finale and not game.attract:
+			self.crowned = self._record()
 		self._queue_next()
 		self.pacer.last = time.perf_counter()
 
@@ -252,19 +286,6 @@ class App:
 			self._dive()
 		elif game.arrival:
 			self._arrive()
-
-	def _title_pick(self):
-		pointed = None
-		for event in self.events:
-			if event.type not in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
-				continue
-			for rect, index in self.title_hits:
-				if rect.collidepoint(event.pos):
-					pointed = index
-					if event.type == pygame.MOUSEMOTION and index != self.title_choice:
-						self.title_choice = index
-						self.audio.play('ui_move', 0.4)
-		return pointed
 
 	def _drive(self, game, dt):
 		if self.pilot is None:
@@ -320,14 +341,15 @@ class App:
 
 	def _to_title(self):
 		game = self.game
-		best = self.settings.get('best_score')
-		if not game.attract and not self.assisted and int(game.score) > int(best):
-			self.settings.set('best_score', int(game.score))
+		key = game.mode.SCORE_KEY
+		if not game.attract and not self.assisted and int(game.score) > int(self.settings.get(key)):
+			self.settings.set(key, int(game.score))
 		self.settings.save()
 		game.kite.release()
 		game.messages = []
 		game.attract = True
 		game.over = False
+		game.mode = MODES[0]
 		self.autopilot.ribbon = -1
 		self._enter('title')
 
@@ -352,15 +374,30 @@ class App:
 		elif action == 'changed':
 			self._apply_settings()
 
-	def _finish_run(self):
-		best = self.settings.get('best_score')
-		self.summary = self.game.summary(best)
+	def _record(self):
+		settings = self.settings
+		mode = self.game.mode
+		best = settings.get(mode.SCORE_KEY)
+		summary = self.game.summary(best)
+		if mode.TIME_KEY:
+			summary.best_time = float(settings.get(mode.TIME_KEY))
 		if self.assisted:
-			self.summary.new_best = False
-			self.summary.best = int(best)
-		if self.summary.new_best:
-			self.settings.set('best_score', self.summary.score)
-		self.settings.save()
+			summary.new_best = False
+			summary.best = int(best)
+			return summary
+		if summary.new_best:
+			settings.set(mode.SCORE_KEY, summary.score)
+		if summary.completed and mode.TIME_KEY:
+			summary.new_time = summary.best_time <= 0.0 or summary.duration < summary.best_time
+			if summary.new_time:
+				settings.set(mode.TIME_KEY, summary.duration)
+			settings.set('story_clears', int(settings.get('story_clears')) + 1)
+		settings.save()
+		return summary
+
+	def _finish_run(self):
+		self.summary = self.crowned or self._record()
+		self.crowned = None
 		self._enter('gameover')
 
 	def _step(self, dt, menu):
@@ -375,16 +412,15 @@ class App:
 		if menu.fullscreen:
 			self._toggle_fullscreen()
 		if self.state == 'title':
-			pointed = self._title_pick()
 			if menu.escape:
 				self.running = False
-			elif menu.left or menu.right or menu.up or menu.down:
-				self.title_choice = 1 - self.title_choice
+				return 0.0
+			action = self.title.update(menu, self.events, self.state_time > 0.4)
+			if self.title.sound:
 				self.audio.play('ui_move', 0.5)
-			elif menu.confirm and self.state_time > 0.4:
-				if menu.click and pointed is not None:
-					self.title_choice = pointed
-				self.options.autoplay = self.title_choice == 1
+			if action == 'start':
+				self.mode = self.title.current()
+				self.options.autoplay = self.title.autoplay()
 				self._begin_run()
 				return 0.0
 			game.update(dt, self._drive(game, dt))
@@ -419,12 +455,13 @@ class App:
 			self._pause_menu(menu, dt)
 			return 0.0
 		if self.state == 'gameover':
-			game.update(dt, Controls())
+			done = self.summary is not None and self.summary.completed
+			game.update(dt, self._drive(game, dt) if done else Controls())
 			if menu.back and self.state_time > 0.5:
 				self._to_title()
 			elif (menu.confirm or menu.restart) and self.state_time > 1.0:
 				self._begin_run()
-			elif self.options.autoplay and self.state_time > 7.0:
+			elif self.options.autoplay and self.state_time > (StoryCfg.REPLAY_DELAY if done else 7.0):
 				self._begin_run()
 			return dt
 		return dt
@@ -433,7 +470,8 @@ class App:
 		surface = self.display.surface
 		game = self.game
 		if self.state == 'title':
-			self.title_hits = self.screens.draw_title(surface, self.state_time, self.settings.get('best_score'), self.input.pad_connected(), self.title_choice, self.career.line()) or []
+			view = self.title.view(self.career, lambda seconds: fmt_clock(seconds, 2))
+			self.title.hits = self.screens.draw_title(surface, self.state_time, view, self.input.pad_connected()) or []
 			if self.show_perf:
 				self.hud.draw(surface, self._perf_only())
 			return
@@ -532,7 +570,7 @@ class App:
 		interval = sum(t[4] for t in tail) / count * 1000.0
 		print('frames %d  work %.2f ms  issue %.2f ms  gpu wait %.2f ms  render %dx%d' % (self.frames, work, issue, wait, self.renderer.w, self.renderer.h))
 		print('flip min %.2f  median %.2f  max %.2f ms   frame interval %.2f ms (%.1f fps)  vsync %s' % (flip[0] * 1000.0, flip[count // 2] * 1000.0, flip[-1] * 1000.0, interval, 1000.0 / interval, self.display.vsync))
-		print('score %d  motes %d  sector %d  flux %.2f  top speed %.0f  over %s' % (int(game.score), game.motes_total, game.sector + 1, game.flux, game.top_speed, game.over))
+		print('mode %s  score %d  motes %d  sector %d  flux %.2f  top speed %.0f  over %s  finale %s' % (game.mode.KEY, int(game.score), game.motes_total, game.sector + 1, game.flux, game.top_speed, game.over, game.finale))
 		print('average speed %.0f  impacts %d  flight time %.0f s  motes/min %.0f' % (game.odometer / max(game.duration, 1.0), game.impacts, game.duration, game.motes_total * 60.0 / max(game.duration, 1.0)))
 
 	def shutdown(self):

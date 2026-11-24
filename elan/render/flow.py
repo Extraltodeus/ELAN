@@ -11,6 +11,7 @@ class TunnelFlow:
 
 	def __init__(self):
 		self.active = False
+		self.plunge = False
 		self.iris_flow = 0.0
 		self.source = (1.0, 1.0, 1.0)
 		self.target = (1.0, 1.0, 1.0)
@@ -20,6 +21,7 @@ class TunnelFlow:
 	def set_world(self, world):
 		palette = world.palette
 		self.active = world.kind == 'tunnel'
+		self.plunge = bool(palette.get('plunge'))
 		self.iris_flow = float(world.style['iris_flow'])
 		if not self.active:
 			return
@@ -49,8 +51,10 @@ class TunnelFlow:
 			pace = 1.8
 			ring = self._mix(ring, colorsys.hsv_to_rgb((clock * 0.19) % 1.0, 0.8, 1.0), 0.65)
 			core = self._mix(core, colorsys.hsv_to_rgb((clock * 0.19 + 0.45) % 1.0, 0.45, 1.0), 0.5)
+		if self.plunge:
+			pace = 1.0 + 2.4 * progress * progress
 		streak = self._mix(ring, (1.0, 1.0, 1.0), 0.6)
-		surge = max((progress - 0.82) / 0.18, 0.0)
+		surge = 0.0 if self.plunge else max((progress - 0.82) / 0.18, 0.0)
 		core = self._mix(core, (1.0, 1.0, 1.0), 0.6 * surge)
 		pulse = 1.0 + 0.18 * math.sin(clock * 5.0)
 		uniforms.set('flow_ring', self._bgr(ring, self.RING_POWER * pulse))

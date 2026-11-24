@@ -12,6 +12,7 @@ class DevTools:
 		(pygame.K_F7, 'warp', 'F7    warp tunnel now'),
 		(pygame.K_F8, 'hyper', 'F8    hyper tunnel now'),
 		(pygame.K_F9, 'exit', 'F9    skip to the tunnel exit'),
+		(pygame.K_F10, 'plunge', 'F10   black hole now (story mode)'),
 		(pygame.K_PAGEDOWN, 'next', 'PGDN  next sector'),
 		(pygame.K_PAGEUP, 'previous', 'PGUP  previous sector'),
 	)
@@ -84,6 +85,13 @@ class DevTools:
 			game.say('DEV  -  ONLY IN A TUNNEL', 'info', 1.6)
 			return
 		game.travel = max(game.travel, game.travel_need * self.EXIT)
+
+	def _plunge(self, app, game):
+		if game.phase != 'sector' or game.finale or not game.mode.LEVELS:
+			game.say('DEV  -  STORY MODE, OUTSIDE A TUNNEL', 'info', 1.6)
+			return
+		game.sector = game.mode.LEVELS - 1
+		game.warp_requested = True
 
 	def _next(self, app, game):
 		app.jump(game.sector + 1)

@@ -29,6 +29,17 @@ def fmt_int(v):
 	return f"{int(v):,}"
 
 
+def fmt_clock(sec, places=1):
+	sec = max(0.0, float(sec))
+	scale = 10 ** places
+	ticks = int(sec * scale + 1.0e-6)
+	whole = ticks // scale
+	tail = "%0*d" % (places, ticks % scale)
+	if whole >= 3600:
+		return "%d:%02d:%02d.%s" % (whole // 3600, whole % 3600 // 60, whole % 60, tail)
+	return "%d:%02d.%s" % (whole // 60, whole % 60, tail)
+
+
 def fmt_dist(d):
 	d = max(0.0, float(d))
 	if d >= 10000:
@@ -87,11 +98,24 @@ class ScorePanel:
 		self.track, self.tpad, _ = shapes.track(self.bar_w, self.bar_h, edge=False)
 		self.last_combo = 1
 		self.flash_t = -10.0
+		self.clock_cap = kit.label("TIME", "tiny", theme.PRIMARY_DIM, spacing=4)
+		self.clock = kit.strip("mid", theme.PRIMARY, "0123456789:.")
+		self.clock_done = kit.strip("mid", theme.ACCENT_HOT, "0123456789:.")
+		self.clock_y = self.bar_y + self.bar_h + m.px(14)
+
+	def draw_clock(self, screen, hs):
+		clock = getattr(hs, "clock", None)
+		if clock is None:
+			return
+		self.clock_cap.draw(screen, self.x, self.clock_y)
+		strip = self.clock_done if getattr(hs, "finale", False) else self.clock
+		strip.draw(screen, fmt_clock(clock), self.x, self.clock_y + self.clock_cap.h)
 
 	def draw(self, screen, hs):
 		t = getattr(hs, "time", 0.0)
 		self.caption.draw(screen, self.x, self.y)
 		self.digits.draw(screen, fmt_int(getattr(hs, "score", 0)), self.x, self.score_y)
+		self.draw_clock(screen, hs)
 		combo = int(getattr(hs, "combo", 1) or 1)
 		if combo > self.last_combo:
 			self.flash_t = t
@@ -128,6 +152,9 @@ class SectorPanel:
 		self.rush_track = mix(theme.ACCENT, theme.DARK, 0.8)
 		self.warp = kit.label("WARP TUNNEL", "body", theme.ACCENT, spacing=5, bold=True)
 		self.hyper = kit.label("HYPER TUNNEL  -  INFINITE FLUX", "body", theme.WHITE, spacing=4, bold=True)
+		self.plunge = kit.label("EVENT HORIZON  -  NO WAY BACK", "body", theme.WHITE, spacing=4, bold=True)
+		self.portal = kit.label("THE WHITE PORTAL IS OPEN", "body", theme.WHITE, spacing=5, bold=True)
+		self.portal_bar = Label(shapes.alpha_strip(self.bar_w, self.bar_h, theme.WHITE, [abs(math.sin(math.pi * i / max(1, self.bar_w - 1))) ** 0.6 for i in range(self.bar_w)]))
 
 	def draw_rush(self, screen, hs, cx):
 		charge = clamp01(getattr(hs, "rush", 0.0) or 0.0)
@@ -171,14 +198,21 @@ class SectorPanel:
 		cx = self.cx
 		tunnel = getattr(hs, "tunnel", None)
 		title = "SECTOR " + str(sector) if tunnel is None else "SECTOR " + str(sector) + "  >  " + str(sector + 1)
+		title = str(getattr(hs, "stage", "") or title)
 		self.kit.label(title, "small", theme.PRIMARY_DIM, spacing=5).draw(screen, cx, self.y, "midtop")
 		x0 = cx - self.bar_w // 2
 		if tunnel is not None:
 			hyper = bool(getattr(hs, "hyper", False))
+			plunge = bool(getattr(hs, "plunge", False))
 			a = 200 + int(55 * math.sin(getattr(hs, "time", 0.0) * 6.0))
-			(self.hyper if hyper else self.warp).draw(screen, cx, self.qy, "midtop", a)
+			(self.plunge if plunge else (self.hyper if hyper else self.warp)).draw(screen, cx, self.qy, "midtop", a)
 			screen.fill(self.rush_track, (x0, self.bar_y, self.bar_w, self.bar_h))
-			screen.fill(theme.WHITE if hyper else theme.ACCENT_HOT, (x0, self.bar_y, int(self.bar_w * clamp01(tunnel)), self.bar_h))
+			screen.fill(theme.WHITE if hyper or plunge else theme.ACCENT_HOT, (x0, self.bar_y, int(self.bar_w * clamp01(tunnel)), self.bar_h))
+			return
+		if getattr(hs, "finale", False):
+			a = 190 + int(65 * math.sin(getattr(hs, "time", 0.0) * 2.2))
+			self.portal.draw(screen, cx, self.qy, "midtop", a)
+			self.portal_bar.blit(screen, (x0, self.bar_y), a)
 			return
 		if getattr(hs, "gate_open", False):
 			a = 150 + int(105 * math.sin(getattr(hs, "time", 0.0) * 6.0))

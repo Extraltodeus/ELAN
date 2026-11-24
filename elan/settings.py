@@ -5,6 +5,7 @@ import os
 import pygame
 
 from elan.config import AppCfg
+from elan.modes import MODE_KEYS
 
 ACTIONS = ('thrust', 'brake', 'strafe_left', 'strafe_right', 'boost', 'tether', 'drift', 'camera', 'restart')
 
@@ -47,6 +48,11 @@ VOLUMES = ('master_volume', 'music_volume', 'sfx_volume', 'pickup_volume')
 DEFAULTS = {
 	'best_score': 0,
 	'best_sector': 0,
+	'game_mode': 'chill',
+	'story_best_score': 0,
+	'story_best_level': 0,
+	'story_best_time': 0.0,
+	'story_clears': 0,
 	'worlds_seen': [],
 	'mouse_sensitivity': 1.0,
 	'mouse_smoothing': 0,
@@ -132,10 +138,17 @@ class Settings:
 
 	def sanitize(self):
 		v = self.values
+		for key in ('best_sector', 'story_best_score', 'story_best_level', 'story_clears'):
+			try:
+				v[key] = max(0, int(v[key]))
+			except (TypeError, ValueError):
+				v[key] = 0
 		try:
-			v['best_sector'] = max(0, int(v['best_sector']))
+			v['story_best_time'] = max(0.0, float(v['story_best_time']))
 		except (TypeError, ValueError):
-			v['best_sector'] = 0
+			v['story_best_time'] = 0.0
+		if v['game_mode'] not in MODE_KEYS:
+			v['game_mode'] = DEFAULTS['game_mode']
 		if not isinstance(v['worlds_seen'], list):
 			v['worlds_seen'] = []
 		v['worlds_seen'] = [str(key) for key in v['worlds_seen']]

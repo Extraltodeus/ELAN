@@ -3,6 +3,7 @@ import torch
 
 from elan.config import RenderCfg, TunnelCfg
 from elan.render.space import Resampler
+from elan.render.horizon import HorizonLens
 
 
 class PostFX:
@@ -10,6 +11,7 @@ class PostFX:
 		self.device = device
 		self.exposure = uniforms.view('exposure', 1, 3, 1, 1)
 		self.damage_color = torch.tensor((0.05, 0.08, 1.0), device=device).view(1, 3, 1, 1)
+		self.lens = HorizonLens(device)
 		self.h = 0
 		self.w = 0
 		self.out_h = 0
@@ -33,6 +35,7 @@ class PostFX:
 		self.w = w
 		self.out_h = out_h
 		self.out_w = out_w
+		self.lens.allocate(h, w)
 		self.sizes = []
 		ch, cw = h, w
 		for _ in range(RenderCfg.BLOOM_LEVELS):
@@ -106,6 +109,8 @@ class PostFX:
 		if self.history is not None and view.persistence > 0.0:
 			hdr = torch.lerp(hdr, self.history, view.persistence)
 		self.history = torch.clamp(hdr, max=5.0)
+		if view.horizon is not None:
+			hdr = self.lens.apply(hdr, view)
 		image = torch.add(hdr, self._bloom(hdr), alpha=RenderCfg.BLOOM_STRENGTH / len(self.sizes) * 3.0)
 		if view.rush > 0.02 or view.surge > 0.01:
 			image = self._rush(image, view.rush, view.warp, view.surge)
