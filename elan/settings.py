@@ -71,6 +71,7 @@ DEFAULTS = {
 	'ai_pilot': True,
 	'render_scale': 0.5,
 	'fullscreen': True,
+	'screen': 0,
 	'bindings': DEFAULT_BINDINGS,
 	'pad_bindings': DEFAULT_PAD,
 	'pad_look': DEFAULT_PAD_LOOK,
@@ -166,6 +167,10 @@ class Settings:
 			v['screen_shake'] = max(0.0, min(2.0, float(v['screen_shake'])))
 		except (TypeError, ValueError):
 			v['screen_shake'] = DEFAULTS['screen_shake']
+		try:
+			v['screen'] = max(0, int(v['screen']))
+		except (TypeError, ValueError):
+			v['screen'] = DEFAULTS['screen']
 		v['warp_effect'] = bool(v['warp_effect'])
 		v['ai_pilot'] = bool(v['ai_pilot'])
 		if isinstance(v['minimap'], bool):

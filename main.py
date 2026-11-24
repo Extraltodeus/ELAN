@@ -11,6 +11,7 @@ def parse():
 	parser = argparse.ArgumentParser(prog='elan')
 	parser.add_argument('--windowed', action='store_true')
 	parser.add_argument('--window', default='1280x720')
+	parser.add_argument('--screen', type=int, default=0)
 	parser.add_argument('--gpu', type=int, default=None)
 	parser.add_argument('--bake-gpu', type=int, default=None)
 	parser.add_argument('--scale', default=None)

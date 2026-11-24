@@ -112,6 +112,34 @@ class FullscreenOption(Option):
 		return 'fullscreen'
 
 
+class ScreenOption(Option):
+	def __init__(self, settings):
+		Option.__init__(self, 'SCREEN')
+		self.settings = settings
+
+	def count(self):
+		try:
+			return max(pygame.display.get_num_displays(), 1)
+		except pygame.error:
+			return 1
+
+	def current(self):
+		return min(self.settings.get('screen'), self.count() - 1)
+
+	def value(self):
+		return '%d / %d' % (self.current() + 1, self.count())
+
+	def step(self, d):
+		count = self.count()
+		if count < 2:
+			return None
+		self.settings.set('screen', (self.current() + d) % count)
+		return 'screen'
+
+	def confirm(self):
+		return self.step(1)
+
+
 class PageOption(Option):
 	def __init__(self, label, menu, page):
 		Option.__init__(self, label)
@@ -184,6 +212,7 @@ class MainPage:
 			RangeOption('PICKUP VOLUME', settings, 'pickup_volume', 0.0, 1.0, 0.05, percent),
 			CycleOption('MUSIC', settings, 'music_mode', ('dj', 'linear', 'synth'), ('DJ STEMS', 'LINEAR', 'SYNTH')),
 			FullscreenOption(menu),
+			ScreenOption(settings),
 		]
 
 	def reset(self):

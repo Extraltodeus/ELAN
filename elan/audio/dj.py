@@ -8,6 +8,8 @@ import wave
 import numpy as np
 import pygame
 
+from .library import is_ogg, locate, read_ogg
+
 STEMS = ('drums', 'bass', 'other')
 LAYERS = ('drums', 'bass', 'other', 'deep')
 
@@ -47,6 +49,11 @@ class StemSet:
 			self.ready = False
 
 	def _read(self, path):
+		if is_ogg(path):
+			pcm, rate = read_ogg(path)
+			if rate != self.format.rate:
+				raise ValueError('unsupported stem format')
+			return pcm
 		with wave.open(path, 'rb') as handle:
 			if handle.getnchannels() != 2 or handle.getsampwidth() != 2 or handle.getframerate() != self.format.rate:
 				raise ValueError('unsupported stem format')
@@ -121,7 +128,7 @@ class StemSet:
 	def _load(self, folder):
 		stems = os.path.join(folder, 'stems')
 		for name in STEMS:
-			self.arrays[name] = self._read(os.path.join(stems, '%s_%s.wav' % (self.name, name)))
+			self.arrays[name] = self._read(locate(stems, '%s_%s' % (self.name, name)))
 		total = min(a.shape[0] for a in self.arrays.values())
 		self._grid(folder, total)
 		self._analyse()

@@ -362,7 +362,6 @@ class Game:
 			self.kite.reset(self.world.spawn_pos, self.world.spawn_dir, StoryCfg.ARRIVAL_SPEED)
 		self.messages = []
 		self.say('WELCOME TO THE SINGULARITY', 'big', 8.0)
-		self.say('NO QUOTA  -  NO DRAIN  -  NOTHING LEFT TO CHASE', 'good', 8.0)
 		self.say('THE WHITE PORTAL IS OPEN  -  CROSS IT WHENEVER YOU ARE READY', 'info', 11.0)
 
 	def enter_tunnel(self, world):

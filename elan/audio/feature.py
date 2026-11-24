@@ -4,6 +4,8 @@ import os
 import numpy as np
 import pygame
 
+from .library import locate
+
 
 class FeatureTrack:
 	LEVEL = 0.95
@@ -13,7 +15,7 @@ class FeatureTrack:
 		self.reader = reader
 		self.folder = folder
 		self.name = name
-		self.path = path or os.path.join(folder, '%s.wav' % name)
+		self.path = path or locate(folder, name)
 		self.channel = None
 		self.intro = None
 		self.body = None

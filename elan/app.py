@@ -21,6 +21,7 @@ from elan.credits import CreditsRoll
 from elan.render import Renderer
 from elan.world import BackgroundBaker
 from elan.audio import AudioDirector
+from elan.audio.library import music_folder
 from elan.ui import Hud, Screens
 from elan.ui.hud import fmt_clock
 
@@ -40,7 +41,8 @@ class App:
 		self.banked = False
 		self.render_device, self.bake_device = self._devices(options)
 		fullscreen = self.settings.get('fullscreen') and not options.windowed
-		self.display = Display(fullscreen, options.window, options.vsync)
+		screen = options.screen - 1 if options.screen else self.settings.get('screen')
+		self.display = Display(fullscreen, options.window, options.vsync, screen)
 		pygame.font.init()
 		self._icon()
 		self.screens = Screens(self.display.size)
@@ -144,7 +146,7 @@ class App:
 		self.baker.request(kind, self.seed, first)
 		self._loading(0.05, 'tuning instruments')
 		self.audio = AudioDirector(str(self.bake_device), self.settings.get('master_volume'), self.settings.get('music_volume'), self.settings.get('sfx_volume'))
-		self.audio.music_folder = os.path.join(self.root, 'assets', 'music')
+		self.audio.music_folder = music_folder(self.root)
 		self.audio.finale_path = getattr(self.options, 'finale_track', None)
 		if self.options.mute:
 			self.audio.enabled = False
@@ -323,6 +325,14 @@ class App:
 	def _toggle_fullscreen(self):
 		self.display.toggle_fullscreen()
 		self.settings.set('fullscreen', self.display.fullscreen)
+		self._resized()
+
+	def _move_screen(self):
+		if self.display.move_to(self.settings.get('screen')):
+			self._resized()
+		self.settings.save()
+
+	def _resized(self):
 		self.renderer.set_output(self.display.size)
 		self.hud.resize(self.display.size)
 		self.screens.resize(self.display.size)
@@ -383,6 +393,8 @@ class App:
 			self.running = False
 		elif action == 'fullscreen':
 			self._toggle_fullscreen()
+		elif action == 'screen':
+			self._move_screen()
 		elif action == 'changed':
 			self._apply_settings()
 

@@ -7,6 +7,8 @@ import wave
 import numpy as np
 import pygame
 
+from .library import is_ogg, locate, read_ogg
+
 
 class Soundtrack:
 	TAU = 1.1
@@ -43,11 +45,14 @@ class Soundtrack:
 			if not isinstance(entry, dict):
 				continue
 			label = str(entry.get('file', key))
-			if label == name + '.wav' or str(key) == name:
+			if os.path.splitext(label)[0] == name or str(key) == name:
 				return entry
 		return {}
 
 	def _read(self, path):
+		if is_ogg(path):
+			pcm, rate = read_ogg(path)
+			return self._shape(pcm.astype(np.float32) / 32768.0, 2, rate)
 		with wave.open(path, 'rb') as handle:
 			channels = handle.getnchannels()
 			width = handle.getsampwidth()
@@ -63,6 +68,9 @@ class Soundtrack:
 			data = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
 		else:
 			raise ValueError('unsupported sample width')
+		return self._shape(data, channels, rate)
+
+	def _shape(self, data, channels, rate):
 		data = data.reshape(-1, channels)
 		if channels == 1:
 			data = np.repeat(data, 2, axis=1)
@@ -108,8 +116,8 @@ class Soundtrack:
 		return pygame.mixer.Sound(buffer=self.format.encode(np.ascontiguousarray(pcm)))
 
 	def _load(self, folder):
-		menu_path = os.path.join(folder, 'menu.wav')
-		flight_path = os.path.join(folder, 'flight.wav')
+		menu_path = locate(folder, 'menu')
+		flight_path = locate(folder, 'flight')
 		if not os.path.isfile(flight_path):
 			return
 		flight = self._loop(self._read(flight_path), self._meta(folder, 'flight'))
@@ -123,7 +131,7 @@ class Soundtrack:
 
 	def _fetch(self, name):
 		try:
-			body = self._loop(self._read(os.path.join(self.folder, '%s.wav' % name)), self._meta(self.folder, name))
+			body = self._loop(self._read(locate(self.folder, name)), self._meta(self.folder, name))
 			self.fresh = (name, self._sound(body), self._sound(self._deep(body)))
 		except Exception:
 			self.wanted = self.loaded

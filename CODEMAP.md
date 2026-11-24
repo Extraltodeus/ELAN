@@ -2,7 +2,7 @@
 
 Jeu de vol à inertie en 3D : rendu raymarché entièrement en PyTorch, fenêtre/entrées/son via Pygame.
 
-Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--bake-gpu N`, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--seed N`, `--mute`, `--perf`, `--autoplay`, `--frames N`, `--shots DIR`, `--sector N` départ au secteur N, `--quota N` quota plafonné pour les tests, `--pilot FICHIER` autre pilote IA, `--developper` mode développeur, `--mode chill|story` force le mode, `--finale` démarre directement dans la Singularité, `--finale-track FICHIER.wav` joue un autre WAV dans la finale, avec les points de boucle du `.json` voisin).
+Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` écran 1, 2, 3… (sinon réglage SCREEN), `--gpu N`, `--bake-gpu N`, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--seed N`, `--mute`, `--perf`, `--autoplay`, `--frames N`, `--shots DIR`, `--sector N` départ au secteur N, `--quota N` quota plafonné pour les tests, `--pilot FICHIER` autre pilote IA, `--developper` mode développeur, `--mode chill|story` force le mode, `--finale` démarre directement dans la Singularité, `--finale-track FICHIER.wav` joue un autre WAV dans la finale, avec les points de boucle du `.json` voisin).
 
 ## Fichiers
 - main.py — entrée, arguments
@@ -12,11 +12,11 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--ba
 - elan/title.py — menu du titre (TitleMenu) : rangée MODE, rangée PILOT, liens OPTIONS / SCORES / CREDITS (`LINKS`), souris / molette, mode mémorisé
 - elan/scores.py — tableau des scores (ScoreBoard) : top `AppCfg.SCORES_KEPT` par mode dans `elan_scores.json`, repris du record existant au premier lancement
 - elan/credits.py — générique : contenu (`CREDITS`) et défilement (CreditsRoll : auto, molette, retour), qui ralentit (`EASE`, `CREEP`) puis s'arrête sur le dernier message centré au lieu de boucler ; la butée (`limit`) vient de CreditsScreen, qui isole ce message d'un demi-écran
-- elan/display.py — fenêtre, copie GPU → surface, cadence, résolution dynamique
+- elan/display.py — fenêtre, choix de l'écran (`screen`, `move_to` : déplacement à chaud via `pygame._sdl2`, plein écran compris), copie GPU → surface, cadence, résolution dynamique
 - elan/input.py — touches réassignables (2 emplacements/action), lissage souris, assignations manette, navigation menus, MenuKeys
 - elan/settings.py — réglages et leurs valeurs par défaut (`DEFAULTS`), assignations par défaut (`DEFAULT_BINDINGS`, `DEFAULT_PAD`, `DEFAULT_PAD_LOOK`), mode choisi, records chill (score, secteur) et story (score, niveau, temps, nombre de fins), mondes vus (JSON)
 - elan/career.py — progression par mode : secteur / niveau record, rang, mondes découverts, messages NEW FRONTIER / NEW WORLD
-- elan/menu.py — menu pause (PauseMenu) : page principale, page OPTIONS (mêmes réglages, ouverte depuis le titre par `open(True)`), page CONTROLS (clavier/souris + manette) avec capture
+- elan/menu.py — menu pause (PauseMenu) : page principale, page OPTIONS (mêmes réglages dont SCREEN, ouverte depuis le titre par `open(True)`), page CONTROLS (clavier/souris + manette) avec capture
 - elan/layout.py — emplacement de la minimap (partagé rendu / HUD)
 - elan/gamepad.py — manette : lecture standardisée (API contrôleur SDL, repli joystick brut), boutons/axes virtuels, libellés
 - elan/gyro.py — gyroscope de la manette (capteur SDL via ctypes) et pilotage par inclinaison
@@ -75,6 +75,7 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--gpu N`, `--ba
 - post.py — rémanence, lentille du trou noir (avant le bloom), bloom, aberration de vitesse, distorsion warp, torsion + étirement de sortie de tunnel (surge), tonemap, incrustation minimap, sortie BGRX
 
 ### elan/audio — son procédural
+- library.py — dossier musique : `assets/music` (WAV) s'il existe, sinon `assets/music_ogg` ; `locate` (.wav puis .ogg), décodage OGG via pygame.mixer
 - synth.py, music.py, soundbank.py — synthèse des boucles et effets (dont `flux_low` : battement de cœur sourd avant la panne, `flux_dry` : souffle grave de la panne sèche)
 - director.py — mixage adaptatif, rotation des morceaux par secteur avec préchargement, effets joués sur des voix dédiées, battement d'alerte qui accélère et monte quand le flux approche de zéro (`FLUX_PERIOD`, `FLUX_VOLUME`)
 - lowpass.py — filtre passe-bas par FFT sur CPU (couche « sous l'eau » des morceaux), sans mémoire GPU
@@ -117,7 +118,14 @@ Les parties AUTO-PLAY ou lancées avec `--autoplay`, `--sector`, `--quota`, `--f
 
 ## Matériel
 - Deux GPU : rendu sur `--gpu` (0 par défaut), génération des mondes et synthèse audio sur l'autre. Un seul GPU : tout sur le même (`App._devices`), vérifié sur une RTX 4070 seule : ~58 fps en 1280×720 à 50 %, quelques à-coups pendant la génération du monde suivant, pic de ~3,6 Go alloués (~5,4 Go réservés). Sans CUDA : repli CPU qui démarre (~2 min de chargement) mais reste injouable (~1 image/s en 320×180), signalé sur l'écran de chargement ; un GPU NVIDIA est requis en pratique.
-- Sans `assets/` (ignoré par git) : musique synthétisée, autopilote classique à la place du pilote appris, pas d'image de chargement ni d'icône.
+- Sans musique (ni `assets/music` ni `assets/music_ogg`) : musique synthétisée ; sans `assets/ai/pilot.pt` : autopilote classique ; sans `assets/splash.png` : pas d'image de chargement.
 
-## Fichiers générés (ignorés par git)
-`elan_settings.json`, `elan_scores.json`, `screenshots/`, `assets/` (musique générée dont `finale.wav`, stems Demucs, pilotes IA `assets/ai/*.pt`)
+## Outils
+- tools/convert_music.py — `assets/music` (WAV) → `assets/music_ogg` (Vorbis q5 via ffmpeg, mêmes noms, `music.json` copié ; seuls les fichiers modifiés, `--force` pour tout refaire)
+- tools/make_icon.py — icône procédurale → `assets/icon.png` (fenêtre) et `assets/icon.ico`
+
+## Fichiers suivis dans assets/
+`assets/icon.png`, `assets/icon.ico`, `assets/ai/pilot.pt`, `assets/music_ogg/`
+
+## Fichiers ignorés par git
+`elan_settings.json`, `elan_scores.json`, `elan_error.log`, `screenshots/`, `TODO*.txt`, le reste de `assets/` (WAV d'origine dont `finale.wav`, stems Demucs, autres pilotes IA)

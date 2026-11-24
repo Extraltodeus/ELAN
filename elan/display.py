@@ -7,7 +7,9 @@ import torch
 
 
 class Display:
-	def __init__(self, fullscreen, window_size=(1280, 720), want_vsync=False):
+	CENTERED = 0x2FFF0000
+
+	def __init__(self, fullscreen, window_size=(1280, 720), want_vsync=False, screen=0):
 		self.want_vsync = want_vsync
 		os.environ.setdefault('SDL_RENDER_SCALE_QUALITY', '1')
 		try:
@@ -15,8 +17,8 @@ class Display:
 		except Exception:
 			pass
 		pygame.display.init()
-		info = pygame.display.Info()
-		self.desktop = (info.current_w, info.current_h)
+		self.screen = self._clamp(screen)
+		self.desktop = self._desktop()
 		self.window_size = window_size
 		self.fullscreen = fullscreen
 		self.surface = None
@@ -27,6 +29,22 @@ class Display:
 		self.staging = None
 		self.refresh = self._refresh_rate()
 		self.open(fullscreen)
+
+	def screens(self):
+		try:
+			return max(pygame.display.get_num_displays(), 1)
+		except pygame.error:
+			return 1
+
+	def _clamp(self, screen):
+		return max(0, min(int(screen), self.screens() - 1))
+
+	def _desktop(self):
+		try:
+			return tuple(pygame.display.get_desktop_sizes()[self.screen])
+		except (pygame.error, IndexError, AttributeError):
+			info = pygame.display.Info()
+			return (info.current_w, info.current_h)
 
 	def _refresh_rate(self):
 		try:
@@ -41,6 +59,7 @@ class Display:
 
 	def open(self, fullscreen):
 		self.fullscreen = fullscreen
+		self.desktop = self._desktop()
 		attempts = []
 		if fullscreen:
 			logical = self.desktop
@@ -53,7 +72,7 @@ class Display:
 		attempts.append((self.window_size, 0, 0))
 		for size, flags, vsync in attempts:
 			try:
-				self.surface = pygame.display.set_mode(size, flags, vsync=vsync)
+				self.surface = pygame.display.set_mode(size, flags, vsync=vsync, display=self.screen)
 			except pygame.error:
 				continue
 			self.vsync = bool(vsync)
@@ -71,6 +90,26 @@ class Display:
 
 	def toggle_fullscreen(self):
 		self.open(not self.fullscreen)
+
+	def move_to(self, screen):
+		screen = self._clamp(screen)
+		if screen == self.screen:
+			return False
+		self.screen = screen
+		fullscreen = self.fullscreen
+		if fullscreen:
+			self.open(False)
+		self._place()
+		self.open(fullscreen)
+		return True
+
+	def _place(self):
+		try:
+			from pygame._sdl2.video import Window
+			spot = self.CENTERED | self.screen
+			Window.from_display_module().position = (spot, spot)
+		except Exception:
+			return
 
 	def needs_reorder(self):
 		return self.order != (0, 1, 2)

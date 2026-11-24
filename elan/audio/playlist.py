@@ -1,6 +1,8 @@
 import json
 import os
 
+from .library import present
+
 
 class Playlist:
 	def __init__(self, folder):
@@ -18,7 +20,7 @@ class Playlist:
 		order = data.get('playlist') if isinstance(data, dict) else None
 		if not isinstance(order, list):
 			order = ['flight']
-		self.names = [name for name in order if name in tracks and os.path.isfile(os.path.join(folder, '%s.wav' % name))]
+		self.names = [name for name in order if name in tracks and present(folder, name)]
 
 	def current(self):
 		return self.names[self.index % len(self.names)] if self.names else None
@@ -33,4 +35,4 @@ class Playlist:
 
 	def has_stems(self, name):
 		stems = os.path.join(self.folder, 'stems')
-		return all(os.path.isfile(os.path.join(stems, '%s_%s.wav' % (name, part))) for part in ('drums', 'bass', 'other'))
+		return all(present(stems, '%s_%s' % (name, part)) for part in ('drums', 'bass', 'other'))

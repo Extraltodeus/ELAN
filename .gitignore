@@ -4,4 +4,11 @@ elan_settings.json
 elan_scores.json
 elan_error.log
 screenshots/
-assets/
+TODO*.txt
+assets/*
+!assets/icon.png
+!assets/icon.ico
+!assets/ai/
+assets/ai/*
+!assets/ai/pilot.pt
+!assets/music_ogg/
