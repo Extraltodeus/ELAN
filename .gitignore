@@ -12,3 +12,4 @@ assets/*
 assets/ai/*
 !assets/ai/pilot.pt
 !assets/music_ogg/
+*.bat

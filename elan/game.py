@@ -361,9 +361,9 @@ class Game:
 		if not fresh:
 			self.kite.reset(self.world.spawn_pos, self.world.spawn_dir, StoryCfg.ARRIVAL_SPEED)
 		self.messages = []
-		self.say('WELCOME TO THE SINGULARITY', 'big', 8.0)
-		self.say('NO QUOTA  -  NO DRAIN  -  NOTHING LEFT TO CHASE', 'good', 8.0, 2.0)
-		self.say('THE WHITE PORTAL IS OPEN  -  CROSS IT WHENEVER YOU ARE READY', 'info', 11.0, 4.0)
+		self.say('WELCOME TO THE SINGULARITY', 'big', 3.2)
+		self.say('NO QUOTA  -  NO DRAIN  -  NOTHING LEFT TO CHASE', 'good', 3.2, 3.2)
+		self.say('THE WHITE PORTAL IS OPEN  -  CROSS IT WHENEVER YOU ARE READY', 'info', 11.0, 6.4)
 
 	def enter_tunnel(self, world):
 		self._bind(world)
