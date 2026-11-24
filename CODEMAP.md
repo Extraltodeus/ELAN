@@ -37,6 +37,7 @@ Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` éc
 - elan/field.py — champ de distance côté CPU (collisions), résolution déduite du volume
 - elan/game.py — règles : flux, panne sèche (adhérence qui fond avec la vitesse) et décrochage, motes (ramassage balayé), anneaux, paliers FLOW, combo, quota, porte, phase tunnel (trajet, sortie, surge de distorsion), plongée dans le trou noir (`plunge`, `horizon`), finale (`_settle` : score et chrono scellés, flux infini, portail ouvert), HUD state
 - elan/camera.py — caméra poursuite/cockpit, orientation du planeur affiché, vrille et recul en forme dard
+- elan/cruise.py — croisière du fond de titre quand le monde est la Singularité (après une fin d'histoire) : ni motes ni porte, donc vol calme à vitesse modérée, cap qui dérive doucement, évitement souple par rayons, altitude tenue
 - elan/autopilot.py — pilote automatique classique (repli), suit la ligne du tunnel, vol plané de récupération quand le flux est à zéro
 
 ### elan/world — génération (GPU)

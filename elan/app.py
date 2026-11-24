@@ -12,6 +12,7 @@ from elan.input import InputManager
 from elan.menu import PauseMenu
 from elan.physics import Controls
 from elan.autopilot import Autopilot
+from elan.cruise import Cruise
 from elan.devtools import DevTools
 from elan.game import Game
 from elan.modes import MODES, mode_of
@@ -60,6 +61,7 @@ class App:
 		self.game = None
 		self.world = None
 		self.autopilot = Autopilot()
+		self.cruise = Cruise()
 		self.pilot = None
 		self.dev = DevTools(getattr(options, 'developer', False))
 		self.preview = bool(getattr(options, 'finale', False))
@@ -304,6 +306,8 @@ class App:
 			self._arrive()
 
 	def _drive(self, game, dt):
+		if game.attract and game.finale:
+			return self.cruise.drive(game, dt)
 		if self.pilot is None:
 			from elan.ai.pilot import LearnedPilot
 			self.pilot = LearnedPilot(self.options.pilot or os.path.join(self.root, 'assets', 'ai', 'pilot.pt'))
