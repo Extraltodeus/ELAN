@@ -3,6 +3,27 @@ import pygame
 from elan.world.palette import PaletteBook
 
 
+class LevelTarget:
+	def __init__(self, book, seed, mode, sector):
+		self.book = book
+		self.seed = seed
+		self.mode = mode
+		self.sector = mode.clamp(sector)
+
+	def move(self, d):
+		sector = self.mode.clamp(self.sector + d)
+		if sector == self.sector:
+			return False
+		self.sector = sector
+		return True
+
+	def label(self):
+		name = self.book.pick(self.sector, self.seed)['name']
+		if self.mode.LEVELS:
+			return '%d / %d  ·  %s' % (self.sector + 1, self.mode.LEVELS, name)
+		return '%d  ·  %s' % (self.sector + 1, name)
+
+
 class DevTools:
 	KEYS = (
 		(pygame.K_F1, 'legend', 'F1    hide / show this panel'),
@@ -24,6 +45,9 @@ class DevTools:
 		self.book = PaletteBook()
 		self.table = {key: name for key, name, _ in self.KEYS}
 		self.text = ['DEVELOPER MODE  -  NO RECORDS'] + [label for _, _, label in self.KEYS]
+
+	def target(self, seed, mode, sector):
+		return LevelTarget(self.book, seed, mode, sector) if self.enabled else None
 
 	def lines(self):
 		if not self.enabled or not self.legend:

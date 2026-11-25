@@ -52,7 +52,7 @@ class App:
 			self.screens.set_loading_backdrop(splash)
 		self.hud = Hud(self.display.size)
 		self.input = InputManager(self.settings)
-		self.pause_menu = PauseMenu(self.settings, self.input, self.screens)
+		self.pause_menu = PauseMenu(self.settings, self.input, self.screens, getattr(options, 'developer', False))
 		self.hud.set_bindings(self.input)
 		self.screens.set_bindings(self.input)
 		self.events = []
@@ -211,7 +211,7 @@ class App:
 		if state != 'play':
 			self.baker.trim()
 
-	def _begin_run(self):
+	def _begin_run(self, keep_seed=False):
 		self._bank()
 		game = self.game
 		mode = self.mode
@@ -227,8 +227,9 @@ class App:
 		self.career.begin(mode)
 		game.start_run(first, mode, not self.piloted)
 		if self.world.sector != first or self.world.kind != 'sector' or bool(self.world.palette.get('final')) != final:
-			self.seed = random.randrange(1, 1000000)
-			self.baker.forget(self.seed)
+			if not keep_seed:
+				self.seed = random.randrange(1, 1000000)
+				self.baker.forget(self.seed)
 			world = self._obtain(kind, first, 0.0, 1.0)
 			if world is None:
 				return
@@ -267,6 +268,17 @@ class App:
 		self.audio.play('warp', 0.9)
 		self._finish_run()
 		game.attract = True
+
+	def _jump_to(self, sector):
+		if self.state == 'options':
+			self.mode = self.title.current()
+			self.options.autoplay = self.title.autoplay()
+			self.piloted = self.options.autoplay
+			self.first = sector
+			self._begin_run(True)
+			return
+		self.jump(sector)
+		self._enter('play')
 
 	def jump(self, sector):
 		game = self.game
@@ -406,6 +418,9 @@ class App:
 			self.running = False
 		elif action == 'fullscreen':
 			self._toggle_fullscreen()
+		elif action == 'jump':
+			self._apply_settings()
+			self._jump_to(self.pause_menu.target.sector)
 		elif action == 'screen':
 			self._move_screen()
 		elif action == 'changed':
@@ -489,6 +504,7 @@ class App:
 			if action in self.MENUS:
 				self.audio.play('ui_select', 0.5)
 				self.credits.open()
+				self.pause_menu.target = self.dev.target(self.seed, self.title.current(), self.first)
 				self.pause_menu.open(True)
 				self._enter(action)
 				return 0.0
@@ -520,6 +536,7 @@ class App:
 			return dt
 		if self.state == 'play':
 			if menu.pause or menu.focus_lost:
+				self.pause_menu.target = self.dev.target(self.seed, game.mode, game.sector)
 				self.pause_menu.open()
 				self._enter('pause')
 				return 0.0

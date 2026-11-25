@@ -140,6 +140,25 @@ class ScreenOption(Option):
 		return self.step(1)
 
 
+class LevelOption(Option):
+	def __init__(self, menu):
+		Option.__init__(self, 'JUMP TO')
+		self.menu = menu
+
+	def value(self):
+		target = self.menu.target
+		return target.label() if target is not None else '-'
+
+	def step(self, d):
+		target = self.menu.target
+		if target is None or not target.move(d):
+			return None
+		return 'level'
+
+	def confirm(self):
+		return 'jump' if self.menu.target is not None else None
+
+
 class PageOption(Option):
 	def __init__(self, label, menu, page):
 		Option.__init__(self, label)
@@ -191,7 +210,10 @@ class MainPage:
 		return None
 
 	def build(self, menu, settings):
-		return [ActionOption('RESUME', 'resume'), ActionOption('RESTART RUN', 'restart')] + self.tuning(menu, settings) + [ActionOption('MAIN MENU', 'title'), ActionOption('QUIT TO DESKTOP', 'quit')]
+		return [ActionOption('RESUME', 'resume'), ActionOption('RESTART RUN', 'restart')] + self.jumps(menu) + self.tuning(menu, settings) + [ActionOption('MAIN MENU', 'title'), ActionOption('QUIT TO DESKTOP', 'quit')]
+
+	def jumps(self, menu):
+		return [LevelOption(menu)] if menu.dev else []
 
 	def tuning(self, menu, settings):
 		return [
@@ -295,7 +317,7 @@ class OptionsPage(MainPage):
 	FOOTER = OPTIONS_FOOTER
 
 	def build(self, menu, settings):
-		return self.tuning(menu, settings) + [ActionOption('BACK', 'resume')]
+		return self.jumps(menu) + self.tuning(menu, settings) + [ActionOption('BACK', 'resume')]
 
 
 class GamepadPage(MainPage):
@@ -506,7 +528,9 @@ class ControlsPage:
 class PauseMenu:
 	EXITS = ('resume', 'restart', 'title', 'quit')
 
-	def __init__(self, settings, input_manager, screens):
+	def __init__(self, settings, input_manager, screens, dev=False):
+		self.dev = bool(dev)
+		self.target = None
 		self.settings = settings
 		self.input = input_manager
 		self.screens = screens

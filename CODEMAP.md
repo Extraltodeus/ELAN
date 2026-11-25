@@ -33,7 +33,7 @@ Lancer : `python main.py` (après `pip install -r requirements.txt`) (options : 
   - pilot.py — pilote embarqué (numpy), utilisé si `assets/ai/pilot.pt` est en version 2 ; sinon autopilote classique. Garde-fous scriptés : bouclier, réserve de flux avant boost, pas de boost en gate rush, approche de porte alignée, frein prédictif. Le pilote garde la main en panne sèche (plus de repli sur l'autopilote classique)
   - bench.py — banc d'essai sans rendu sur les vraies règles du jeu (`python -m elan.ai.bench [pilote|classic] --seconds 300`)
 - elan/crashlog.py — journal d'erreurs elan_error.log (exceptions, threads, plantages durs)
-- elan/devtools.py — mode développeur (`--developper`) : raccourcis de test, légende HUD, parties sans record
+- elan/devtools.py — mode développeur (`--developper`) : raccourcis de test, légende HUD, parties sans record ; entrée JUMP TO (LevelTarget) en tête du menu pause et d'OPTIONS : saut direct au niveau / secteur choisi (depuis le titre : partie lancée à ce niveau, même seed)
 - elan/physics.py — planeur : portance (décroche à basse vitesse, adhérence `grip`), traînée, sillage, grappin, collisions, ricochets ; sous l'eau forme dard ; poussée warp en tunnel
 - elan/rail.py — guidage en tunnel (TunnelRail) : rappel vers l'axe, suivi des courbes, visée assistée bornée, pas de paroi ni de marche arrière
 - elan/field.py — champ de distance côté CPU (collisions), résolution déduite du volume
