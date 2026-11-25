@@ -17,6 +17,8 @@ def sign(v):
 
 
 class Option:
+	WHEEL = 1
+
 	def __init__(self, label):
 		self.label = label
 
@@ -141,6 +143,8 @@ class ScreenOption(Option):
 
 
 class LevelOption(Option):
+	WHEEL = -1
+
 	def __init__(self, menu):
 		Option.__init__(self, 'JUMP TO')
 		self.menu = menu
@@ -278,7 +282,7 @@ class MainPage:
 			elif kind == pygame.MOUSEWHEEL and event.y:
 				hit = self.hover.current()
 				if hit and hit[1] == self.index:
-					result = self.change(sign(event.y))
+					result = self.change(sign(event.y) * self.options[self.index].WHEEL)
 			if result:
 				return result
 		return result
