@@ -37,9 +37,7 @@ Twelve biomes, each with its own terrain forms, light and mood: EMBER DUSK, GLAC
 
 Both modes can be flown by you (**FLY**) or by the AI pilot (**AUTO-PLAY**), a reinforcement-learned glider that you can hand the controls to and take them back from with F2. AUTO-PLAY runs are never scored.
 
-What waits at the end of STORY is for you to find out.
-
-<p align="center"><img src="docs/singularity.jpg" alt="Beyond level 42"></p>
+<p align="center"><img src="docs/singularity.jpg" alt="Beyond level 42"><br><sub>Somewhere beyond level 42</sub></p>
 
 ## Controls
 

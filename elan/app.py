@@ -124,7 +124,7 @@ class App:
 		self._pump()
 		if self.render_device.type != 'cuda':
 			label = '%s  -  no CUDA GPU found, the CPU fallback is very slow' % label
-		if self.options.freeze_music:
+		if self.options.freeze_music and self.game is not None:
 			self.display.surface.fill((0, 0, 0))
 		else:
 			self.screens.draw_loading(self.display.surface, progress, label)
