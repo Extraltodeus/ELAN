@@ -2,7 +2,7 @@
 
 Jeu de vol à inertie en 3D : rendu raymarché entièrement en PyTorch, fenêtre/entrées/son via Pygame.
 
-Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` écran 1, 2, 3… (sinon réglage SCREEN), `--gpu N`, `--bake-gpu N` génération + audio sur un autre GPU, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--seed N`, `--mute`, `--perf`, `--autoplay`, `--frames N`, `--shots DIR`, `--sector N` départ au secteur N, `--quota N` quota plafonné pour les tests, `--pilot FICHIER` autre pilote IA, `--developper` mode développeur, `--mode chill|story` force le mode, `--finale` démarre directement dans la Singularité, `--finale-track FICHIER.wav` joue un autre WAV dans la finale, avec les points de boucle du `.json` voisin).
+Lancer : `run.bat` ou `python main.py` (options : `--windowed`, `--screen N` écran 1, 2, 3… (sinon réglage SCREEN), `--gpu N`, `--bake-gpu N` génération + audio sur un autre GPU, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--seed N`, `--mute`, `--freeze-music` musique et effets en pause pendant les chargements bloquants (saut de secteur PageUp/PageDown) et écran de chargement noir uni, pour des captures vidéo à monter sans coupure audible, `--perf`, `--autoplay`, `--frames N`, `--shots DIR`, `--sector N` départ au secteur N, `--quota N` quota plafonné pour les tests, `--pilot FICHIER` autre pilote IA, `--developper` mode développeur, `--mode chill|story` force le mode, `--finale` démarre directement dans la Singularité, `--finale-track FICHIER.wav` joue un autre WAV dans la finale, avec les points de boucle du `.json` voisin).
 
 ## Fichiers
 - requirements.txt — torch (CUDA, index cu130), numpy, pygame

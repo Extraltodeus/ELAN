@@ -124,21 +124,32 @@ class App:
 		self._pump()
 		if self.render_device.type != 'cuda':
 			label = '%s  -  no CUDA GPU found, the CPU fallback is very slow' % label
-		self.screens.draw_loading(self.display.surface, progress, label)
+		if self.options.freeze_music:
+			self.display.surface.fill((0, 0, 0))
+		else:
+			self.screens.draw_loading(self.display.surface, progress, label)
 		self.display.flip()
 
 	def _obtain(self, kind, sector, start, span):
 		key = (kind, self.seed, sector)
 		self.baker.throttle = 0.0
-		while self.running:
-			if self.baker.error:
-				raise RuntimeError(self.baker.error)
-			if self.baker.ready(*key):
-				return self.baker.take(*key)
-			self.baker.request(*key, urgent=True)
-			self._loading(start + span * self.baker.fraction, self.baker.label)
-			time.sleep(0.02)
-		return None
+		frozen = False
+		try:
+			while self.running:
+				if self.baker.error:
+					raise RuntimeError(self.baker.error)
+				if self.baker.ready(*key):
+					return self.baker.take(*key)
+				if self.options.freeze_music and self.audio is not None and not frozen:
+					self.audio.freeze(True)
+					frozen = True
+				self.baker.request(*key, urgent=True)
+				self._loading(start + span * self.baker.fraction, self.baker.label)
+				time.sleep(0.02)
+			return None
+		finally:
+			if frozen:
+				self.audio.freeze(False)
 
 	def _load(self):
 		self._loading(0.02, 'waking the lambos')

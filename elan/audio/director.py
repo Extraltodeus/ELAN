@@ -324,6 +324,17 @@ class AudioDirector:
 			self.pickup = clamp(pickup)
 		self.apply_now()
 
+	def freeze(self, frozen):
+		if not self.enabled:
+			return
+		try:
+			if frozen:
+				pygame.mixer.pause()
+			else:
+				pygame.mixer.unpause()
+		except pygame.error:
+			return
+
 	def toggle_mute(self):
 		self.muted = not self.muted
 		self.apply_now()

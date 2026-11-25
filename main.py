@@ -18,6 +18,7 @@ def parse():
 	parser.add_argument('--fps', type=int, default=0)
 	parser.add_argument('--seed', type=int, default=None)
 	parser.add_argument('--mute', action='store_true')
+	parser.add_argument('--freeze-music', action='store_true')
 	parser.add_argument('--vsync', action='store_true')
 	parser.add_argument('--perf', action='store_true')
 	parser.add_argument('--autoplay', action='store_true')
