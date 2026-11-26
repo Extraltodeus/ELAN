@@ -61,7 +61,7 @@ Everything is rebindable in **OPTIONS → CONTROLS** (two keyboard/mouse slots p
 
 ## Running it
 
-You need an **NVIDIA GPU** with an up-to-date driver: the whole renderer runs on CUDA. ÉLAN was built and tested on Windows 10 with Python 3.10; other platforms are untested.
+**NVIDIA RTX only.** You need an RTX graphics card with an up-to-date driver: the whole renderer runs on CUDA. ÉLAN was built and tested on Windows 10 with Python 3.10; other platforms are untested.
 
 ```
 pip install -r requirements.txt
