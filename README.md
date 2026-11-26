@@ -72,6 +72,16 @@ The music and the trained AI pilot ship with the repository, so it runs straight
 
 Useful options: `--windowed`, `--screen N` (which monitor), `--gpu N`, `--scale 0.75|auto`, `--fps N`, `--vsync`, `--mute`, `--seed N`. The in-game OPTIONS menu covers the rest (render scale, monitor, minimap, camera, volumes, music mode).
 
+### Developer mode
+
+`python main.py --dev` unlocks the test tools. Runs played this way never touch your records or the scoreboard.
+
+- **JUMP TO** at the top of the pause menu and OPTIONS: pick any level (its biome is shown) and go straight there.
+- **PageDown / PageUp**: next / previous sector.
+- **F4 / F5**: flux to zero / full · **F6**: open the gate · **F7 / F8**: warp / hyper tunnel now · **F9**: skip to the tunnel exit · **F10**: black hole now (STORY) · **F1**: hide the legend.
+- **F2** hands the controls to the AI pilot at any time, even in a FLY run.
+- `--freeze-music` pauses music and sound during blocking loads (sector jumps) and turns the loading screen plain black, handy for recording seamless videos.
+
 ## Under the hood
 
 No game engine, no meshes, no textures. Every frame is ray-marched through signed distance fields entirely in PyTorch, worlds are sculpted on the GPU from spectral noise, and Pygame only opens the window, reads the inputs and plays the sound. The soundtrack is generated music split into stems, which an in-game DJ remixes bar by bar to match how you fly. The AI pilot learned by imitation, then by PPO in a batched simulator of the game's own physics.
