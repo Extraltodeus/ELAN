@@ -69,7 +69,7 @@ DEFAULTS = {
 	'pickup_volume': 0.4,
 	'warp_effect': True,
 	'ai_pilot': True,
-	'render_scale': 0.5,
+	'render_scale': 1.0,
 	'fullscreen': True,
 	'screen': 0,
 	'bindings': DEFAULT_BINDINGS,
